@@ -1,0 +1,658 @@
+/**
+ * Flick and Slide – Content stylesheet
+ * Design tokens mirror stylesheet.md. All classes are namespaced .fas-*
+ * to avoid host page collisions.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Design tokens                                                              */
+/* -------------------------------------------------------------------------- */
+:root {
+  --fas-bg: #0d1117;
+  --fas-surface: #161b22;
+  --fas-surface-elevated: #1c2330;
+  --fas-border: #30363d;
+  --fas-border-subtle: #21262d;
+  --fas-text: #e6edf3;
+  --fas-text-muted: #8b949e;
+  --fas-text-dim: #6e7681;
+  --fas-accent: #58a6ff;
+  --fas-accent-hover: #79b8ff;
+  --fas-accent-a: #3fb950;
+  --fas-accent-a-soft: rgba(63, 185, 80, 0.2);
+  --fas-accent-b: #58a6ff;
+  --fas-accent-b-soft: rgba(88, 166, 255, 0.2);
+  --fas-danger: #f85149;
+  --fas-danger-hover: #ff7b72;
+  --fas-focus-ring: rgba(88, 166, 255, 0.45);
+
+  --fas-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --fas-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --fas-space-1: 4px;
+  --fas-space-2: 8px;
+  --fas-space-3: 12px;
+  --fas-space-4: 16px;
+  --fas-space-5: 20px;
+  --fas-space-6: 24px;
+  --fas-space-8: 32px;
+
+  --fas-radius-sm: 6px;
+  --fas-radius-md: 10px;
+  --fas-radius-lg: 14px;
+  --fas-radius-pill: 999px;
+
+  --fas-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --fas-shadow-md: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --fas-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+
+  --fas-z-banner: 2147483000;
+  --fas-z-fab: 2147483100;
+  --fas-z-panel: 2147483200;
+  --fas-z-badge: 2147482900;
+
+  --fas-transition: 120ms ease;
+  --fas-exposure: 50%;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Selection mode – page images                                               */
+/* -------------------------------------------------------------------------- */
+img.fas-selectable {
+  cursor: pointer !important;
+  outline: 2px solid transparent !important;
+  outline-offset: 2px !important;
+  transition: outline-color var(--fas-transition), box-shadow var(--fas-transition) !important;
+  position: relative;
+}
+
+img.fas-selectable:hover {
+  outline-color: var(--fas-accent) !important;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.25) !important;
+}
+
+img.fas-selected-a {
+  outline: 3px solid var(--fas-accent-a) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px var(--fas-accent-a-soft) !important;
+}
+
+img.fas-selected-b {
+  outline: 3px solid var(--fas-accent-b) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px var(--fas-accent-b-soft) !important;
+}
+
+/* Badge overlays (sibling wrappers or absolute over image) */
+.fas-badge {
+  position: absolute !important;
+  z-index: var(--fas-z-badge) !important;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--fas-font) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  color: #fff !important;
+  border-radius: var(--fas-radius-sm) !important;
+  pointer-events: none !important;
+  box-shadow: var(--fas-shadow-sm) !important;
+  letter-spacing: 0.02em;
+  box-sizing: border-box !important;
+}
+
+.fas-badge--a {
+  background: var(--fas-accent-a) !important;
+}
+
+.fas-badge--b {
+  background: var(--fas-accent-b) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Top banner                                                                 */
+/* -------------------------------------------------------------------------- */
+.fas-banner {
+  position: fixed !important;
+  top: 0 !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: var(--fas-z-banner) !important;
+  margin-top: var(--fas-space-3) !important;
+  padding: var(--fas-space-3) var(--fas-space-5) !important;
+  background: var(--fas-surface) !important;
+  color: var(--fas-text) !important;
+  font-family: var(--fas-font) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  border: 1px solid var(--fas-border) !important;
+  border-radius: var(--fas-radius-pill) !important;
+  box-shadow: var(--fas-shadow-md) !important;
+  pointer-events: none !important;
+  white-space: nowrap !important;
+  max-width: calc(100vw - 32px) !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  animation: fas-fade-in 160ms ease !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Floating action button                                                     */
+/* -------------------------------------------------------------------------- */
+.fas-fab {
+  position: fixed !important;
+  bottom: 28px !important;
+  right: 28px !important;
+  z-index: var(--fas-z-fab) !important;
+  padding: 14px 22px !important;
+  background: linear-gradient(135deg, #238636 0%, #2ea043 100%) !important;
+  color: #fff !important;
+  font-family: var(--fas-font) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  border: none !important;
+  border-radius: var(--fas-radius-pill) !important;
+  box-shadow: var(--fas-shadow-md), 0 0 0 1px rgba(255, 255, 255, 0.08) inset !important;
+  cursor: pointer !important;
+  transition: transform var(--fas-transition), box-shadow var(--fas-transition),
+    filter var(--fas-transition) !important;
+  animation: fas-fade-in 160ms ease !important;
+}
+
+.fas-fab:hover {
+  filter: brightness(1.08) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: var(--fas-shadow-lg) !important;
+}
+
+.fas-fab:active {
+  transform: translateY(0) !important;
+  filter: brightness(0.96) !important;
+}
+
+.fas-fab:focus-visible {
+  outline: 2px solid var(--fas-accent) !important;
+  outline-offset: 3px !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Comparison panel                                                           */
+/* -------------------------------------------------------------------------- */
+.fas-panel {
+  position: fixed !important;
+  z-index: var(--fas-z-panel) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: var(--fas-bg) !important;
+  color: var(--fas-text) !important;
+  font-family: var(--fas-font) !important;
+  border: 1px solid var(--fas-border) !important;
+  border-radius: var(--fas-radius-lg) !important;
+  box-shadow: var(--fas-shadow-lg) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  animation: fas-fade-in 140ms ease !important;
+}
+
+.fas-panel--small {
+  width: min(600px, 92vw) !important;
+  height: min(400px, 85vh) !important;
+}
+
+.fas-panel--normal {
+  width: min(900px, 94vw) !important;
+  height: min(600px, 88vh) !important;
+}
+
+.fas-panel--maximised {
+  width: 90vw !important;
+  height: 90vh !important;
+}
+
+.fas-panel__header {
+  display: flex !important;
+  align-items: center !important;
+  gap: var(--fas-space-2) !important;
+  padding: var(--fas-space-2) var(--fas-space-3) !important;
+  background: var(--fas-surface) !important;
+  border-bottom: 1px solid var(--fas-border) !important;
+  cursor: move !important;
+  user-select: none !important;
+  flex-shrink: 0 !important;
+  min-height: 48px !important;
+  box-sizing: border-box !important;
+}
+
+.fas-panel__header-left,
+.fas-panel__header-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: var(--fas-space-2) !important;
+  flex-shrink: 0 !important;
+}
+
+.fas-panel__header-right {
+  margin-left: auto !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+}
+
+.fas-panel__title {
+  flex: 1 1 auto !important;
+  text-align: center !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--fas-text) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  pointer-events: none !important;
+  padding: 0 var(--fas-space-2) !important;
+}
+
+.fas-panel__body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: var(--fas-space-4) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  background: var(--fas-bg) !important;
+}
+
+.fas-panel__footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: var(--fas-space-3) !important;
+  padding: var(--fas-space-2) var(--fas-space-4) !important;
+  background: var(--fas-surface) !important;
+  border-top: 1px solid var(--fas-border) !important;
+  flex-shrink: 0 !important;
+  font-size: 12px !important;
+  color: var(--fas-text-muted) !important;
+  box-sizing: border-box !important;
+}
+
+.fas-panel__footer-labels {
+  display: flex !important;
+  gap: var(--fas-space-4) !important;
+}
+
+.fas-panel__footer-labels span:first-child {
+  color: var(--fas-accent-a) !important;
+  font-weight: 600 !important;
+}
+
+.fas-panel__footer-labels span:last-child {
+  color: var(--fas-accent-b) !important;
+  font-weight: 600 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Buttons & toggles                                                          */
+/* -------------------------------------------------------------------------- */
+.fas-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 6px 12px !important;
+  font-family: var(--fas-font) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  color: var(--fas-text) !important;
+  background: var(--fas-surface-elevated) !important;
+  border: 1px solid var(--fas-border) !important;
+  border-radius: var(--fas-radius-sm) !important;
+  cursor: pointer !important;
+  transition: background var(--fas-transition), border-color var(--fas-transition),
+    color var(--fas-transition) !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
+
+.fas-btn:hover {
+  background: #242b36 !important;
+  border-color: #484f58 !important;
+}
+
+.fas-btn:focus-visible {
+  outline: 2px solid var(--fas-accent) !important;
+  outline-offset: 2px !important;
+}
+
+.fas-btn--close {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  color: var(--fas-text-muted) !important;
+  border-radius: var(--fas-radius-sm) !important;
+  cursor: pointer !important;
+}
+
+.fas-btn--close:hover {
+  color: #fff !important;
+  background: rgba(248, 81, 73, 0.2) !important;
+  border-color: var(--fas-danger) !important;
+}
+
+.fas-btn--primary {
+  background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  padding: 10px 18px !important;
+  font-size: 13px !important;
+  border-radius: var(--fas-radius-md) !important;
+}
+
+.fas-btn--primary:hover {
+  filter: brightness(1.06) !important;
+  background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%) !important;
+}
+
+.fas-btn--ghost {
+  background: transparent !important;
+  border-color: var(--fas-border) !important;
+  color: var(--fas-text-muted) !important;
+}
+
+.fas-btn--ghost:hover {
+  color: var(--fas-text) !important;
+  border-color: #484f58 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.fas-btn.is-active {
+  background: rgba(88, 166, 255, 0.15) !important;
+  border-color: var(--fas-accent) !important;
+  color: var(--fas-accent) !important;
+}
+
+.fas-view-toggles,
+.fas-mode-tabs {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  padding: 2px !important;
+  background: var(--fas-bg) !important;
+  border: 1px solid var(--fas-border-subtle) !important;
+  border-radius: var(--fas-radius-sm) !important;
+}
+
+.fas-view-toggles .fas-btn,
+.fas-mode-tabs .fas-btn {
+  border: none !important;
+  background: transparent !important;
+  padding: 5px 10px !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  color: var(--fas-text-muted) !important;
+}
+
+.fas-view-toggles .fas-btn:hover,
+.fas-mode-tabs .fas-btn:hover {
+  color: var(--fas-text) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.fas-view-toggles .fas-btn.is-active,
+.fas-mode-tabs .fas-btn.is-active {
+  background: var(--fas-surface-elevated) !important;
+  color: var(--fas-text) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Flick mode                                                                 */
+/* -------------------------------------------------------------------------- */
+.fas-flick {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--fas-space-3) !important;
+}
+
+.fas-flick__stage {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #010409 !important;
+  border: 1px solid var(--fas-border-subtle) !important;
+  border-radius: var(--fas-radius-md) !important;
+  overflow: hidden !important;
+}
+
+.fas-flick__img {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  display: block !important;
+  transition: opacity 100ms ease !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+  pointer-events: none !important;
+}
+
+.fas-flick__img.is-fading {
+  opacity: 0.35 !important;
+}
+
+.fas-flick__label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--fas-text-muted) !important;
+  letter-spacing: 0.02em !important;
+}
+
+.fas-flick__label[data-side="A"] {
+  color: var(--fas-accent-a) !important;
+}
+
+.fas-flick__label[data-side="B"] {
+  color: var(--fas-accent-b) !important;
+}
+
+.fas-flick__controls {
+  flex-shrink: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: var(--fas-space-2) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Comparison slider                                                          */
+/* -------------------------------------------------------------------------- */
+.fas-slider {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  background: #010409 !important;
+  border: 1px solid var(--fas-border-subtle) !important;
+  border-radius: var(--fas-radius-md) !important;
+  overflow: hidden !important;
+  touch-action: none !important;
+  user-select: none !important;
+  cursor: ew-resize !important;
+}
+
+.fas-slider__layer {
+  position: absolute !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+.fas-slider__layer img {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  display: block !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+.fas-slider__layer--a {
+  z-index: 2 !important;
+  /* Left side = Image A; clip away the right portion past the handle */
+  clip-path: inset(0 calc(100% - var(--fas-exposure)) 0 0) !important;
+}
+
+.fas-slider__layer--b {
+  z-index: 1 !important;
+}
+
+.fas-slider__handle {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: var(--fas-exposure) !important;
+  width: 0 !important;
+  z-index: 3 !important;
+  transform: translateX(-50%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: auto !important;
+}
+
+.fas-slider__line {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 50% !important;
+  width: 3px !important;
+  transform: translateX(-50%) !important;
+  background: #fff !important;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5) !important;
+  pointer-events: none !important;
+}
+
+.fas-slider__grip {
+  position: relative !important;
+  z-index: 1 !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  color: #0d1117 !important;
+  border: 3px solid #fff !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: -1px !important;
+  cursor: ew-resize !important;
+  flex-shrink: 0 !important;
+}
+
+.fas-slider__grip-label {
+  position: absolute !important;
+  top: calc(50% + 32px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  white-space: nowrap !important;
+  font-family: var(--fas-font) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+  background: rgba(13, 17, 23, 0.75) !important;
+  padding: 4px 8px !important;
+  border-radius: var(--fas-radius-sm) !important;
+  pointer-events: none !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mode panes visibility                                                      */
+/* -------------------------------------------------------------------------- */
+.fas-mode-pane {
+  display: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+}
+
+.fas-mode-pane.is-visible {
+  display: flex !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Utility / motion                                                           */
+/* -------------------------------------------------------------------------- */
+@keyframes fas-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fas-banner {
+  /* banner uses translateX for centering – keep fade without fighting it */
+  animation: fas-banner-in 160ms ease !important;
+}
+
+@keyframes fas-banner-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fas-banner,
+  .fas-fab,
+  .fas-panel,
+  .fas-flick__img {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Hide extension UI from print */
+@media print {
+  .fas-banner,
+  .fas-fab,
+  .fas-panel,
+  .fas-badge {
+    display: none !important;
+  }
+}
