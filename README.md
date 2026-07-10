@@ -37,13 +37,94 @@ Similar tools that inspired this project include PixelParallel-style overlay com
 
 ---
 
-## Installation (load unpacked)
+## Install (Chrome – step by step)
 
-1. Open Chrome and go to `chrome://extensions/`.
-2. Enable **Developer mode** (top right).
-3. Click **Load unpacked**.
-4. Select this folder (`flick-and-slide-extension`).
-5. Pin the extension if you like; the icon appears in the toolbar.
+This extension is **not** on the Chrome Web Store. You install it manually as an **unpacked** extension from this repository. It takes about two minutes.
+
+### Part A — Download the extension folder
+
+**Option 1: Download ZIP (easiest, no Git required)**
+
+1. Open this repository in your browser:  
+   **https://github.com/clarkemcrobb/flick-and-slide-extension**
+2. Click the green **Code** button (near the top of the page, above the file list).
+3. In the menu that opens, click **Download ZIP**.
+4. When the download finishes, open your **Downloads** folder (or wherever your browser saves files).
+5. Find the file named something like **`flick-and-slide-extension-main.zip`**.
+6. **Unzip** it:
+   - **macOS:** double-click the ZIP file.
+   - **Windows:** right-click the ZIP → **Extract All…** → choose a location → **Extract**.
+7. You should now have a folder named **`flick-and-slide-extension-main`** (or similar).  
+   Open it and confirm you can see files such as `manifest.json`, `background.js`, `content.js`, and an `icons` folder.  
+   **You will select this folder in Chrome** (the folder that *contains* `manifest.json`, not a parent folder and not a single file).
+
+**Option 2: Clone with Git (if you already use Git)**
+
+```bash
+git clone https://github.com/clarkemcrobb/flick-and-slide-extension.git
+cd flick-and-slide-extension
+```
+
+Use the `flick-and-slide-extension` folder that contains `manifest.json` in the steps below.
+
+---
+
+### Part B — Load the extension in Google Chrome
+
+1. Open **Google Chrome**.
+2. In the address bar, type exactly:  
+   `chrome://extensions/`  
+   then press **Enter**.  
+   (Or: click the three-dot menu **⋮** → **Extensions** → **Manage extensions**.)
+3. In the top-right of the Extensions page, turn **Developer mode** **ON** (the toggle should be blue/active).
+4. A new row of buttons appears. Click **Load unpacked**.
+5. In the file picker dialog:
+   - Navigate to the folder you unzipped (or cloned) in Part A.
+   - Select the folder that **directly contains** `manifest.json`  
+     (e.g. `flick-and-slide-extension-main` or `flick-and-slide-extension`).
+   - Click **Select** / **Open** (wording depends on your OS).
+6. **Flick and Slide** should appear in your extensions list with its icon.
+7. **Pin it to the toolbar (recommended):**
+   - Click the puzzle-piece **Extensions** icon to the right of Chrome’s address bar.
+   - Find **Flick and Slide**.
+   - Click the **pin** icon so it stays visible on the toolbar.
+
+You only need to do this once. Chrome will keep the extension until you remove it. If you move or rename the folder later, Chrome may disable the extension until you load it again from the new path.
+
+---
+
+### Part C — Quick check that it works
+
+1. Open a normal website that has images (for example a news or shopping page).  
+   Do **not** use `chrome://` pages or the Chrome Web Store — those cannot run extensions like this.
+2. Click the **Flick and Slide** icon on the toolbar.
+3. You should see a banner near the top: **Select the two images to compare**.
+4. Click one image (green **A** badge), then another (blue **B** badge).
+5. Click **Compare Images** (bottom-right) or press **C**.
+6. A floating comparison window should open.
+
+---
+
+### Updating to a newer version
+
+1. Download the latest ZIP again (or `git pull` if you cloned).
+2. Replace your old folder with the new files (or unzip to a new folder).
+3. Go to `chrome://extensions/`.
+4. Find **Flick and Slide** and click the **Reload** (circular arrow) button on its card.  
+   If you installed from a new folder path, remove the old entry and use **Load unpacked** again.
+5. Refresh any open tabs you want to use the extension on.
+
+---
+
+### Troubleshooting
+
+| Problem | What to try |
+|---------|-------------|
+| **Load unpacked** is missing | Turn **Developer mode** ON (top right of `chrome://extensions/`). |
+| “Manifest file is missing or unreadable” | You selected the wrong folder. Select the folder that **contains** `manifest.json` (not the ZIP, not a parent Downloads folder only). |
+| Icon does nothing / no banner | Reload the webpage, then click the icon again. Some pages (`chrome://`, Web Store) are blocked. |
+| After you edit files, nothing changes | On `chrome://extensions/`, click **Reload** on the extension card, then reload the test page. |
+| Extension shows errors after moving the folder | Load it again with **Load unpacked** from the new location. |
 
 ---
 

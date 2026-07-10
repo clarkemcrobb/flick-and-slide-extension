@@ -1,5 +1,9 @@
 # Logbook
 
+## v1.0.1 – README install guide
+
+- Expanded main README with step-by-step user install instructions: download ZIP from GitHub, unzip, Load unpacked in Chrome, pin icon, smoke test, update path, troubleshooting table.
+
 ## v1.0 – Initial implementation per spec
 
 - One-shot generation on 2026-07-10.
