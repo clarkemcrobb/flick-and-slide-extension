@@ -4,6 +4,10 @@
 
 Published image-focused feature set as 2.0.0. Video comparison not included yet.
 
+### Distribution
+- GitHub Release ships **`flick-and-slide.zip`** with runtime files only (no README/logbook/stylesheet).
+- Full repo still has docs for the project page; install instructions point at the release zip.
+
 ### Comparison window
 - Dedicated OS window (not in-page overlay): Small / Medium / Maximised / Full Screen
 - Close via ×, Esc, footer Close tool, or OS/Chrome close fully exits the tool

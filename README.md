@@ -26,18 +26,22 @@ Built with Manifest V3 and plain JavaScript/CSS — no frameworks.
 
 This extension is loaded unpacked (not from the Chrome Web Store).
 
-1. Download the repository (**Code → Download ZIP**) or clone it with Git.
-2. Unzip if needed. Use the folder that contains `manifest.json`.
-3. Open Chrome and go to `chrome://extensions/`.
-4. Turn on **Developer mode**.
-5. Click **Load unpacked** and select that folder.
-6. Pin **Flick and Slide** to the toolbar if you like.
+1. Open the [**latest release**](https://github.com/clarkemcrobb/flick-and-slide-extension/releases/latest).
+2. Download **`flick-and-slide.zip`** from that release (runtime files only — no docs).
+3. Unzip it. You should get a folder named `flick-and-slide` that contains `manifest.json`.
+4. Open Chrome and go to `chrome://extensions/`.
+5. Turn on **Developer mode**.
+6. Click **Load unpacked** and select the `flick-and-slide` folder.
+7. Pin **Flick and Slide** to the toolbar if you like.
+
+> Developers who want the full source (including docs) can still clone the repo or use **Code → Download ZIP**. That package includes extra files not required to run the extension.
 
 ### Updating
 
-Right-click the toolbar icon and choose **Check for updates…**, or download the latest files and click **Reload** on the extension card in `chrome://extensions/`.
+1. Right-click the toolbar icon → **Check for updates…** to see if a newer version is on GitHub.
+2. Download the new release zip, replace your extension folder (or load the new folder), then click **Reload** on the extension card in `chrome://extensions/`.
 
-Unpacked extensions do not update automatically; the update checker only tells you when a newer version is available on GitHub.
+Unpacked extensions do not update automatically; the checker only reports available versions and how to install them.
 
 ---
 

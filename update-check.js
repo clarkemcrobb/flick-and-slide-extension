@@ -6,8 +6,11 @@
 'use strict';
 
 const REPO_URL = 'https://github.com/clarkemcrobb/flick-and-slide-extension';
+/** Stable asset name on each GitHub Release (runtime files only). */
 const ZIP_URL =
-  'https://github.com/clarkemcrobb/flick-and-slide-extension/archive/refs/heads/main.zip';
+  'https://github.com/clarkemcrobb/flick-and-slide-extension/releases/latest/download/flick-and-slide.zip';
+const RELEASES_URL =
+  'https://github.com/clarkemcrobb/flick-and-slide-extension/releases/latest';
 
 function $(id) {
   return document.getElementById(id);
@@ -91,7 +94,8 @@ function render() {
       '<li>Open <code>chrome://extensions</code>, find <strong>Flick and Slide</strong>, and click <strong>Reload</strong>.</li>' +
       '<li>Refresh any tabs where you use the extension.</li>' +
       '</ol>';
-    actions.appendChild(linkBtn('Download latest ZIP', ZIP_URL, true));
+    actions.appendChild(linkBtn('Download latest release', ZIP_URL, true));
+    actions.appendChild(linkBtn('View releases', RELEASES_URL, false));
     actions.appendChild(linkBtn('Open repository', REPO_URL, false));
     return;
   }
