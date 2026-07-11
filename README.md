@@ -91,16 +91,6 @@ Compare      → chrome.windows → comparison.html (Flick / Slider / Side by Si
 
 ---
 
-## Limitations
-
-- Unpacked install only (not Chrome Web Store auto-update).
-- Cross-origin iframes cannot be selected.
-- Slider is a fair overlay only when aspect ratios are similar (warning at ≥ 8% difference).
-- Images are never distorted; AR badges are labels only.
-- **Video comparison is not included in v2.0** (planned later).
-
----
-
 ## Version
 
 **2.0.0** — Dedicated comparison window, Side by Side, source image, AR tools, stricter selection, full exit on close, update checker.
