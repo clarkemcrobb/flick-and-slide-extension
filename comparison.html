@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flick Between Images – A vs B</title>
+    <link rel="stylesheet" href="comparison.css" />
+  </head>
+  <body>
+    <div id="app" class="fas-app is-fit-fill" role="application" aria-label="Flick and Slide comparison">
+      <header class="fas-panel__header" id="header">
+        <div class="fas-panel__header-left">
+          <button
+            type="button"
+            class="fas-btn fas-btn--close"
+            id="btn-close"
+            title="Close comparison tool"
+            aria-label="Close comparison tool"
+          >
+            ×
+          </button>
+        </div>
+        <div class="fas-panel__title-block">
+          <div class="fas-panel__title" id="panel-title">Flick Between Images – A vs B</div>
+          <div class="fas-panel__hint" id="slider-hint" hidden>
+            Click and drag anywhere in the window to drag the slider
+          </div>
+        </div>
+        <div class="fas-panel__header-right">
+          <div class="fas-view-toggles" role="group" aria-label="View size" id="view-toggles">
+            <button type="button" class="fas-btn" data-size="small">Small</button>
+            <button type="button" class="fas-btn is-active" data-size="normal">Medium</button>
+            <button type="button" class="fas-btn" data-size="maximised">Maximised</button>
+            <button
+              type="button"
+              class="fas-btn"
+              data-size="fullscreen"
+              title="Full screen (same as F11)"
+            >
+              Full Screen
+            </button>
+          </div>
+          <div class="fas-mode-tabs" role="tablist" aria-label="Comparison mode" id="mode-tabs">
+            <button
+              type="button"
+              class="fas-btn is-active"
+              role="tab"
+              aria-selected="true"
+              data-mode="flick"
+            >
+              Flick Between Images
+            </button>
+            <button
+              type="button"
+              class="fas-btn"
+              role="tab"
+              aria-selected="false"
+              data-mode="slider"
+            >
+              Comparison Slider
+            </button>
+            <button
+              type="button"
+              class="fas-btn"
+              role="tab"
+              aria-selected="false"
+              data-mode="side"
+            >
+              Side by Side
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main class="fas-panel__body" id="body">
+        <div class="fas-mode-pane is-visible" data-pane="flick" id="pane-flick">
+          <div class="fas-flick" id="flick-root">
+            <!-- Optional persistent source (left) when a source image is set -->
+            <div class="fas-flick__source" id="flick-source" hidden>
+              <div class="fas-flick__stage fas-flick__stage--source">
+                <div class="fas-ar-badge" id="source-ar" aria-hidden="true"></div>
+                <img
+                  class="fas-flick__img fas-fit-img"
+                  id="source-img"
+                  alt="Source image"
+                  draggable="false"
+                  title="Click to toggle fill the frame and original size"
+                />
+              </div>
+              <div class="fas-flick__label fas-flick__label--source">Source image</div>
+            </div>
+
+            <div class="fas-flick__main" id="flick-main">
+              <div class="fas-flick__stage" id="flick-stage">
+                <div class="fas-ar-badge fas-ar-badge--stack" id="flick-ar" aria-hidden="true"></div>
+                <img
+                  class="fas-flick__img fas-fit-img"
+                  id="flick-img"
+                  alt="Image A"
+                  draggable="false"
+                  title="Click to toggle fill the frame and original size"
+                />
+              </div>
+              <div class="fas-flick__controls">
+                <div class="fas-flick__label" id="flick-label" data-side="A">Image A</div>
+                <div class="fas-flick__btn-row">
+                  <button type="button" class="fas-btn fas-btn--primary" id="btn-swap">
+                    Swap to Image B
+                  </button>
+                  <button type="button" class="fas-btn fas-btn--source" id="btn-source">
+                    Add a source image
+                  </button>
+                </div>
+                <div class="fas-flick__hint">
+                  Or press the left or right arrow key to switch
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fas-mode-pane" data-pane="slider" id="pane-slider">
+          <div
+            class="fas-ar-warning fas-ar-warning--bar"
+            id="ar-warning-bar"
+            hidden
+            role="status"
+          ></div>
+          <div
+            class="fas-slider"
+            id="slider"
+            role="slider"
+            aria-label="Image comparison slider"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="50"
+            tabindex="0"
+          >
+            <div class="fas-slider__layer fas-slider__layer--b">
+              <img id="slider-img-b" alt="Image B" draggable="false" />
+            </div>
+            <div class="fas-slider__layer fas-slider__layer--a">
+              <img id="slider-img-a" alt="Image A" draggable="false" />
+            </div>
+            <div class="fas-slider__handle" id="slider-handle" aria-hidden="true">
+              <div class="fas-slider__line"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fas-mode-pane" data-pane="side" id="pane-side">
+          <div class="fas-side">
+            <div class="fas-side__panel fas-side__panel--a">
+              <div class="fas-side__stage">
+                <div class="fas-ar-badge" id="side-ar-a" aria-hidden="true"></div>
+                <img
+                  class="fas-fit-img"
+                  id="side-img-a"
+                  alt="Image A"
+                  draggable="false"
+                  title="Click to toggle fill the frame and original size"
+                />
+              </div>
+              <div class="fas-side__label fas-side__label--a">Image A</div>
+            </div>
+            <div class="fas-side__divider" aria-hidden="true"></div>
+            <div class="fas-side__panel fas-side__panel--b">
+              <div class="fas-side__stage">
+                <div class="fas-ar-badge" id="side-ar-b" aria-hidden="true"></div>
+                <img
+                  class="fas-fit-img"
+                  id="side-img-b"
+                  alt="Image B"
+                  draggable="false"
+                  title="Click to toggle fill the frame and original size"
+                />
+              </div>
+              <div class="fas-side__label fas-side__label--b">Image B</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fas-status" id="status" hidden>Loading images…</div>
+      </main>
+
+      <!-- Full-screen AR mismatch alert (Slider mode) -->
+      <div
+        class="fas-ar-modal"
+        id="ar-warning-modal"
+        hidden
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="ar-warning-modal-title"
+        aria-describedby="ar-warning-modal-text"
+      >
+        <div class="fas-ar-modal__backdrop" aria-hidden="true"></div>
+        <div class="fas-ar-modal__box">
+          <div class="fas-ar-modal__title" id="ar-warning-modal-title">Aspect ratio mismatch</div>
+          <p class="fas-ar-modal__text" id="ar-warning-modal-text"></p>
+          <button type="button" class="fas-ar-modal__btn" id="ar-warning-proceed">
+            Proceed anyway
+          </button>
+        </div>
+      </div>
+
+      <footer class="fas-panel__footer">
+        <div class="fas-panel__footer-left">
+          <div class="fas-panel__footer-hint" id="fit-hint">
+            Showing the image filling the frame - click an image to return to original size
+          </div>
+        </div>
+        <button type="button" class="fas-btn fas-btn--ghost" id="btn-reset">
+          Close tool
+        </button>
+      </footer>
+    </div>
+    <script src="comparison.js"></script>
+  </body>
+</html>

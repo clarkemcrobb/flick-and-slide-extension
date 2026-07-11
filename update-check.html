@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flick and Slide – Check for updates</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --danger: #f85149;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 20px;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-bottom: 16px;
+      }
+      .status {
+        font-size: 15px;
+        font-weight: 700;
+        margin: 0 0 10px;
+      }
+      .status.ok {
+        color: var(--ok);
+      }
+      .status.update {
+        color: var(--warn);
+      }
+      .status.error {
+        color: var(--danger);
+      }
+      .status.checking {
+        color: var(--accent);
+      }
+      .meta {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .meta strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      ol {
+        margin: 12px 0 0;
+        padding-left: 20px;
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--text);
+      }
+      li {
+        margin-bottom: 8px;
+      }
+      a {
+        color: var(--accent);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      button,
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        text-decoration: none;
+        border: 1px solid var(--border);
+        background: #21262d;
+        color: var(--text);
+      }
+      button.primary,
+      .btn.primary {
+        background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%);
+        border-color: transparent;
+        color: #fff;
+      }
+      button:hover,
+      .btn:hover {
+        filter: brightness(1.06);
+      }
+      .note {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 16px;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Check for updates</h1>
+    <p class="sub">Compares your installed version with the GitHub repository.</p>
+
+    <div class="card">
+      <p class="status checking" id="status">Checking GitHub…</p>
+      <div class="meta" id="meta"></div>
+      <div id="steps" hidden></div>
+      <div class="actions" id="actions"></div>
+    </div>
+
+    <p class="note">
+      Unpacked (Load unpacked) extensions cannot update themselves automatically. Chrome only
+      auto-updates extensions installed from the Chrome Web Store. This check tells you if a
+      newer version exists and how to install it manually.
+    </p>
+
+    <script src="update-check.js"></script>
+  </body>
+</html>

@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Flick and Slide",
-  "version": "1.0.0",
-  "description": "Flick and Slide – Select any two images on a webpage, then compare them instantly in a floating window using Flick mode (quick swap for pixel-perfect visual diff) or Slider mode (classic before/after overlay).",
-  "permissions": ["activeTab", "scripting"],
+  "version": "2.0.0",
+  "description": "Flick and Slide – Select any two images on a webpage and compare them in a dedicated window: Flick, Side by Side, or Comparison Slider, with optional source image and aspect-ratio guidance.",
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "host_permissions": [
+    "https://raw.githubusercontent.com/*",
+    "https://api.github.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

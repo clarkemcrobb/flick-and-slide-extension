@@ -1,46 +1,80 @@
 /**
  * Flick and Slide – Content script
  *
- * Handles selection mode, image highlights, floating comparison window
- * (Flick + Comparison Slider), keyboard shortcuts, and clean teardown.
- * Injected dynamically by background.js (Manifest V3).
+ * Selection mode only: banner, image highlights/badges, FAB.
+ * Comparison UI opens in a dedicated Chrome window via the service worker
+ * (so it can be maximised and moved to another monitor).
  */
 
 (function () {
   'use strict';
 
-  // Guard against double injection; re-injection should only toggle.
-  if (window.__FLICK_AND_SLIDE__) {
+  /**
+   * After chrome://extensions Reload, old content scripts stay on the page but
+   * chrome.runtime is dead ("Extension context invalidated"). Detect that and
+   * tear down orphans so a fresh inject can take over cleanly.
+   */
+  function isExtensionContextValid() {
     try {
-      window.__FLICK_AND_SLIDE__.toggle();
-    } catch (e) {
-      console.error('[Flick and Slide] Toggle failed:', e);
+      return typeof chrome !== 'undefined' && !!(chrome.runtime && chrome.runtime.id);
+    } catch (_) {
+      return false;
     }
-    return;
   }
 
-  const FAS_MESSAGE = 'FAS_TOGGLE';
-  const NS = 'fas';
+  // Existing instance from a previous inject
+  if (window.__FLICK_AND_SLIDE__) {
+    const prev = window.__FLICK_AND_SLIDE__;
+    try {
+      if (isExtensionContextValid() && typeof prev.isAlive === 'function' && prev.isAlive()) {
+        prev.toggle();
+        return;
+      }
+    } catch (_) {
+      /* fall through to destroy */
+    }
+    // Dead / orphaned instance — remove its UI and listeners, then re-init.
+    try {
+      if (typeof prev.destroy === 'function') prev.destroy();
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      delete window.__FLICK_AND_SLIDE__;
+    } catch (_) {
+      window.__FLICK_AND_SLIDE__ = null;
+    }
+  }
 
-  /** @type {import('./types').FasState} */
+  const FAS_TOGGLE = 'FAS_TOGGLE';
+  const FAS_OPEN_COMPARISON = 'FAS_OPEN_COMPARISON';
+  const FAS_CLOSE_COMPARISON = 'FAS_CLOSE_COMPARISON';
+  const FAS_COMPARISON_CLOSED = 'FAS_COMPARISON_CLOSED';
+  const FAS_ENTER_SOURCE_PICK = 'FAS_ENTER_SOURCE_PICK';
+
   const state = {
     active: false,
+    destroyed: false,
     imageA: null,
     imageB: null,
+    imageSource: null,
+    /** When true, next image click assigns the Source image (A/B stay selected). */
+    selectingSource: false,
     comparing: false,
-    mode: 'flick',
-    flickSide: 'A',
-    viewSize: 'normal',
-    sliderPct: 50,
     banner: null,
     fab: null,
-    panel: null,
-    badges: new Map(),
+    /** @type {Map<HTMLImageElement, { ring: HTMLElement, badge: HTMLElement, side: string }>} */
+    selectionChrome: new Map(),
     selectableImgs: new Set(),
     observers: [],
-    drag: null,
-    sliderDragging: false,
+    repositionRaf: 0,
+    /** Guard against double-firing click handlers on the same gesture */
+    lastSelectTs: 0,
+    lastSelectImg: null,
+    onMessage: null,
   };
+
+  const MIN_SELECT_AREA = 24 * 24;
 
   // ---------------------------------------------------------------------------
   // Utilities
@@ -64,16 +98,6 @@
     return img.currentSrc || img.src || img.getAttribute('src') || '';
   }
 
-  function attachImageFallback(img, label) {
-    if (!img) return;
-    img.addEventListener('error', function onErr() {
-      img.removeEventListener('error', onErr);
-      img.alt = (label || 'Image') + ' could not be loaded';
-      img.style.opacity = '0.4';
-    });
-  }
-
-
   function isTypingTarget(target) {
     if (!target || !target.tagName) return false;
     const tag = target.tagName.toLowerCase();
@@ -82,26 +106,100 @@
     return false;
   }
 
-  function clamp(n, min, max) {
-    return Math.max(min, Math.min(max, n));
-  }
-
-  function centerPanel(panel) {
-    if (!panel) return;
-    // Use left/top so drag works; center initially.
-    const rect = panel.getBoundingClientRect();
-    const w = rect.width || panel.offsetWidth;
-    const h = rect.height || panel.offsetHeight;
-    const left = Math.max(8, (window.innerWidth - w) / 2);
-    const top = Math.max(8, (window.innerHeight - h) / 2);
-    panel.style.left = left + 'px';
-    panel.style.top = top + 'px';
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
-  }
-
   function removeEl(el) {
     if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  function isContextInvalidError(err) {
+    const msg = err && (err.message || String(err));
+    return typeof msg === 'string' && msg.includes('Extension context invalidated');
+  }
+
+  /**
+   * Safe chrome.runtime.sendMessage — never throws after extension reload.
+   * @param {object} message
+   * @param {function=} callback
+   */
+  function safeSendMessage(message, callback) {
+    if (state.destroyed || !isExtensionContextValid()) {
+      handleContextInvalidated();
+      if (callback) callback(null);
+      return;
+    }
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        const lastErr = chrome.runtime.lastError;
+        if (lastErr && isContextInvalidError(lastErr)) {
+          handleContextInvalidated();
+          if (callback) callback(null);
+          return;
+        }
+        if (callback) callback(response, lastErr);
+      });
+    } catch (err) {
+      if (isContextInvalidError(err)) {
+        handleContextInvalidated();
+      } else {
+        console.warn('[Flick and Slide] sendMessage failed:', err);
+      }
+      if (callback) callback(null);
+    }
+  }
+
+  /**
+   * Tear down this inject completely when the extension was reloaded/disabled.
+   * Idempotent and must not call chrome.* APIs.
+   */
+  function handleContextInvalidated() {
+    if (state.destroyed) return;
+    destroy();
+  }
+
+  function destroy() {
+    if (state.destroyed) return;
+    state.destroyed = true;
+    state.active = false;
+    state.comparing = false;
+    state.imageA = null;
+    state.imageB = null;
+
+    try {
+      removeEl(state.banner);
+    } catch (_) {}
+    state.banner = null;
+    try {
+      removeEl(state.fab);
+    } catch (_) {}
+    state.fab = null;
+
+    try {
+      clearAllHighlights();
+    } catch (_) {}
+    try {
+      stopMutationObserver();
+    } catch (_) {}
+
+    try {
+      document.removeEventListener('click', onDocumentClick, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('scroll', scheduleRepositionChrome, true);
+      window.removeEventListener('resize', scheduleRepositionChrome, true);
+    } catch (_) {}
+
+    if (state.onMessage && isExtensionContextValid()) {
+      try {
+        chrome.runtime.onMessage.removeListener(state.onMessage);
+      } catch (_) {}
+    }
+    state.onMessage = null;
+
+    if (window.__FLICK_AND_SLIDE__ && window.__FLICK_AND_SLIDE__.destroy === destroy) {
+      try {
+        delete window.__FLICK_AND_SLIDE__;
+      } catch (_) {
+        window.__FLICK_AND_SLIDE__ = null;
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -109,7 +207,11 @@
   // ---------------------------------------------------------------------------
 
   function activate() {
-    if (state.active) return;
+    if (state.destroyed || state.active) return;
+    if (!isExtensionContextValid()) {
+      handleContextInvalidated();
+      return;
+    }
     state.active = true;
     showBanner();
     scanAndMarkImages();
@@ -120,32 +222,43 @@
   }
 
   function deactivate() {
-    closeComparison(false);
+    if (state.destroyed) return;
+
+    const wasComparing = state.comparing;
     state.active = false;
     state.imageA = null;
     state.imageB = null;
-    state.mode = 'flick';
-    state.flickSide = 'A';
-    state.viewSize = 'normal';
-    state.sliderPct = 50;
+    state.imageSource = null;
+    state.selectingSource = false;
+    state.comparing = false;
 
     removeEl(state.banner);
     state.banner = null;
     removeEl(state.fab);
     state.fab = null;
-    removeEl(state.panel);
-    state.panel = null;
 
     clearAllHighlights();
     stopMutationObserver();
 
     document.removeEventListener('click', onDocumentClick, true);
     document.removeEventListener('keydown', onKeyDown, true);
+
+    // If the comparison window is still open, close it (OS/UI may already have).
+    // comparing is already false so this will not re-enter deactivate.
+    if (wasComparing && isExtensionContextValid()) {
+      safeSendMessage({ type: FAS_CLOSE_COMPARISON }, () => {});
+    }
   }
 
   function toggle() {
+    if (state.destroyed) return;
+    if (!isExtensionContextValid()) {
+      handleContextInvalidated();
+      return;
+    }
+    // If comparison window is open, close it — full tool exit follows via FAS_COMPARISON_CLOSED.
     if (state.comparing) {
-      closeComparison(true);
+      requestCloseComparison();
       return;
     }
     if (state.active) {
@@ -158,63 +271,135 @@
   function showBanner() {
     removeEl(state.banner);
     const banner = $('div', 'fas-banner', {
-      text: 'Select the two images to compare',
       role: 'status',
       'aria-live': 'polite',
     });
+
+    const labelText = state.selectingSource
+      ? 'Select a source image (A and B stay selected)'
+      : 'Select the two images to compare';
+
+    const label = $('span', 'fas-banner__text', {
+      text: labelText,
+    });
+
+    if (state.selectingSource) {
+      const cancelBtn = $('button', 'fas-banner__close', {
+        type: 'button',
+        text: 'Cancel',
+        title: 'Cancel source selection and reopen comparison',
+        'aria-label': 'Cancel source selection',
+      });
+      cancelBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelSourcePick();
+      });
+      banner.appendChild(label);
+      banner.appendChild(cancelBtn);
+    }
+
+    const closeBtn = $('button', 'fas-banner__close', {
+      type: 'button',
+      text: 'Close tool',
+      title: 'Close tool',
+      'aria-label': 'Close tool',
+    });
+    closeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deactivate();
+    });
+
+    if (!state.selectingSource) {
+      banner.appendChild(label);
+    }
+    banner.appendChild(closeBtn);
     document.documentElement.appendChild(banner);
     state.banner = banner;
   }
 
+  function updateBanner() {
+    if (!state.active) return;
+    showBanner();
+  }
+
+  function enterSourcePickMode() {
+    state.comparing = false;
+    state.selectingSource = true;
+    updateFab();
+    updateBanner();
+    // Ensure A/B (and existing source) chrome still visible
+    enforceSelectionInvariants();
+  }
+
+  function cancelSourcePick() {
+    state.selectingSource = false;
+    updateBanner();
+    if (state.imageA && state.imageB) {
+      openComparison();
+    }
+  }
+
+  function assignSource(img) {
+    // Clear previous source chrome
+    if (state.imageSource && state.imageSource.el) {
+      try {
+        state.imageSource.el.classList.remove('fas-selected-s');
+      } catch (_) {}
+      removeSelectionChrome(state.imageSource.el);
+    }
+    state.imageSource = snapshotImage(img);
+    img.classList.add('fas-selected-s');
+    img.classList.remove('fas-selected-a', 'fas-selected-b');
+    placeSelectionChrome(img, 'S');
+  }
+
   function scanAndMarkImages() {
-    const imgs = document.querySelectorAll('img');
-    imgs.forEach((img) => markSelectable(img));
+    document.querySelectorAll('img').forEach((img) => markSelectable(img));
   }
 
   function markSelectable(img) {
     if (!img || img.nodeName !== 'IMG') return;
-    // Skip our own UI images
-    if (img.closest && img.closest('.fas-panel, .fas-banner, .fas-fab')) return;
+    if (img.closest && img.closest('.fas-banner, .fas-fab')) return;
     if (state.selectableImgs.has(img)) return;
 
     img.classList.add('fas-selectable');
     state.selectableImgs.add(img);
 
-    // Re-apply selection classes if this element is still selected
+    // Re-bind chrome only for the slot that owns this exact element
     if (state.imageA && state.imageA.el === img) {
       img.classList.add('fas-selected-a');
-      placeBadge(img, 'A');
-    }
-    if (state.imageB && state.imageB.el === img) {
+      placeSelectionChrome(img, 'A');
+    } else if (state.imageB && state.imageB.el === img) {
       img.classList.add('fas-selected-b');
-      placeBadge(img, 'B');
+      placeSelectionChrome(img, 'B');
+    } else if (state.imageSource && state.imageSource.el === img) {
+      img.classList.add('fas-selected-s');
+      placeSelectionChrome(img, 'S');
     }
-  }
-
-  function unmarkSelectable(img) {
-    if (!img) return;
-    img.classList.remove('fas-selectable', 'fas-selected-a', 'fas-selected-b');
-    removeBadgeFor(img);
-    state.selectableImgs.delete(img);
   }
 
   function clearAllHighlights() {
     state.selectableImgs.forEach((img) => {
       try {
-        img.classList.remove('fas-selectable', 'fas-selected-a', 'fas-selected-b');
+        img.classList.remove('fas-selectable', 'fas-selected-a', 'fas-selected-b', 'fas-selected-s');
       } catch (_) {
-        /* node may be detached */
+        /* detached */
       }
     });
     state.selectableImgs.clear();
-    state.badges.forEach((badge) => removeEl(badge));
-    state.badges.clear();
+    clearAllSelectionChrome();
   }
 
   function startMutationObserver() {
     stopMutationObserver();
     const mo = new MutationObserver((mutations) => {
-      if (!state.active) return;
+      if (state.destroyed || !state.active) return;
+      if (!isExtensionContextValid()) {
+        handleContextInvalidated();
+        return;
+      }
       for (const m of mutations) {
         m.addedNodes.forEach((node) => {
           if (node.nodeType !== 1) return;
@@ -239,57 +424,116 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Badges
+  // Selection chrome (fixed border ring + A/B badge glued to the image)
+  // Host pages often override img outline/border; overlays avoid that fight.
   // ---------------------------------------------------------------------------
 
-  function placeBadge(img, side) {
-    removeBadgeFor(img);
-    const badge = $('div', 'fas-badge fas-badge--' + side.toLowerCase(), {
-      text: side,
+  function placeSelectionChrome(img, side) {
+    // Enforce one ring/badge per side globally (no duplicate A’s or B’s).
+    const toRemove = [];
+    state.selectionChrome.forEach((chrome, otherImg) => {
+      if (otherImg === img || chrome.side === side) {
+        toRemove.push(otherImg);
+      }
     });
+    toRemove.forEach((otherImg) => removeSelectionChrome(otherImg));
+
+    const ring = $('div', 'fas-ring fas-ring--' + side.toLowerCase(), {
+      'aria-hidden': 'true',
+    });
+    const badge = $('div', 'fas-badge fas-badge--' + side.toLowerCase(), {
+      text: side === 'S' ? 'S' : side,
+      title: side === 'S' ? 'Source image' : 'Image ' + side,
+      'aria-hidden': 'true',
+    });
+
+    document.documentElement.appendChild(ring);
     document.documentElement.appendChild(badge);
-    state.badges.set(img, badge);
-    positionBadge(img, badge);
+    state.selectionChrome.set(img, { ring, badge, side });
+    positionSelectionChrome(img);
   }
 
-  function positionBadge(img, badge) {
-    if (!img || !badge) return;
+  function positionSelectionChrome(img) {
+    const chrome = state.selectionChrome.get(img);
+    if (!chrome || !img) return;
+
+    if (!img.isConnected) {
+      removeSelectionChrome(img);
+      return;
+    }
+
     const rect = img.getBoundingClientRect();
-    // Fixed positioning relative to viewport
+    const visible =
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < window.innerHeight &&
+      rect.left < window.innerWidth;
+
+    const { ring, badge } = chrome;
+
+    if (!visible) {
+      ring.style.display = 'none';
+      badge.style.display = 'none';
+      return;
+    }
+
+    // Fixed to the viewport so scroll position cannot drift the highlight.
+    ring.style.display = 'block';
+    ring.style.position = 'fixed';
+    ring.style.left = rect.left + 'px';
+    ring.style.top = rect.top + 'px';
+    ring.style.width = rect.width + 'px';
+    ring.style.height = rect.height + 'px';
+
+    badge.style.display = 'inline-flex';
     badge.style.position = 'fixed';
     badge.style.left = Math.max(0, rect.left + 6) + 'px';
     badge.style.top = Math.max(0, rect.top + 6) + 'px';
   }
 
-  function repositionAllBadges() {
-    state.badges.forEach((badge, img) => {
-      if (!img.isConnected) {
-        removeEl(badge);
-        state.badges.delete(img);
-        return;
-      }
-      positionBadge(img, badge);
+  function repositionAllSelectionChrome() {
+    state.selectionChrome.forEach((_chrome, img) => {
+      positionSelectionChrome(img);
     });
   }
 
-  function removeBadgeFor(img) {
-    const badge = state.badges.get(img);
-    if (badge) {
-      removeEl(badge);
-      state.badges.delete(img);
-    }
+  function scheduleRepositionChrome() {
+    if (state.destroyed || !state.active) return;
+    if (state.repositionRaf) return;
+    state.repositionRaf = window.requestAnimationFrame(() => {
+      state.repositionRaf = 0;
+      if (state.destroyed || !state.active) return;
+      try {
+        repositionAllSelectionChrome();
+      } catch (err) {
+        if (isContextInvalidError(err)) handleContextInvalidated();
+      }
+    });
   }
 
-  function onScrollOrResize() {
-    repositionAllBadges();
+  function removeSelectionChrome(img) {
+    const chrome = state.selectionChrome.get(img);
+    if (!chrome) return;
+    removeEl(chrome.ring);
+    removeEl(chrome.badge);
+    state.selectionChrome.delete(img);
   }
 
-  // Keep badges glued to images while scrolling/resizing during selection.
-  window.addEventListener('scroll', onScrollOrResize, true);
-  window.addEventListener('resize', onScrollOrResize, true);
+  function clearAllSelectionChrome() {
+    state.selectionChrome.forEach((chrome) => {
+      removeEl(chrome.ring);
+      removeEl(chrome.badge);
+    });
+    state.selectionChrome.clear();
+  }
+
+  window.addEventListener('scroll', scheduleRepositionChrome, true);
+  window.addEventListener('resize', scheduleRepositionChrome, true);
 
   // ---------------------------------------------------------------------------
-  // Click selection
+  // Click selection (strict: max one A, one B, never the same visual twice)
   // ---------------------------------------------------------------------------
 
   function snapshotImage(img) {
@@ -301,87 +545,383 @@
     };
   }
 
-  function selectImage(img) {
-    // Deselect if already selected
-    if (state.imageA && state.imageA.el === img) {
-      clearSlot('A');
-      afterSelectionChange();
-      return;
+  /** Serializable payload for the comparison window (no DOM refs). */
+  function toPayloadImage(data) {
+    return {
+      src: data.src,
+      naturalWidth: data.naturalWidth,
+      naturalHeight: data.naturalHeight,
+    };
+  }
+
+  function imageArea(img) {
+    if (!img || !img.getBoundingClientRect) return 0;
+    const r = img.getBoundingClientRect();
+    return Math.max(0, r.width) * Math.max(0, r.height);
+  }
+
+  function isOurUi(el) {
+    if (!el || !el.closest) return false;
+    return !!(
+      el.closest('.fas-banner') ||
+      el.closest('.fas-fab') ||
+      el.closest('.fas-ring') ||
+      el.closest('.fas-badge')
+    );
+  }
+
+  /**
+   * Whether an img is large enough / visible enough to select.
+   * Filters out icons, tracking pixels, and hidden nodes.
+   */
+  function isValidSelectable(img) {
+    if (!img || img.nodeName !== 'IMG') return false;
+    if (!img.isConnected) return false;
+    if (isOurUi(img)) return false;
+    const r = img.getBoundingClientRect();
+    if (r.width < 24 || r.height < 24) return false;
+    if (r.width * r.height < MIN_SELECT_AREA) return false;
+    // Fully off-screen
+    if (r.bottom < 0 || r.right < 0 || r.top > window.innerHeight || r.left > window.innerWidth) {
+      return false;
     }
-    if (state.imageB && state.imageB.el === img) {
-      clearSlot('B');
-      afterSelectionChange();
-      return;
+    try {
+      const style = window.getComputedStyle(img);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        return false;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return true;
+  }
+
+  function rectsIoU(a, b) {
+    const x1 = Math.max(a.left, b.left);
+    const y1 = Math.max(a.top, b.top);
+    const x2 = Math.min(a.right, b.right);
+    const y2 = Math.min(a.bottom, b.bottom);
+    const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    if (inter <= 0) return 0;
+    const areaA = Math.max(0, a.width) * Math.max(0, a.height);
+    const areaB = Math.max(0, b.width) * Math.max(0, b.height);
+    const union = areaA + areaB - inter;
+    return union > 0 ? inter / union : 0;
+  }
+
+  function normalizeSrc(src) {
+    if (!src) return '';
+    try {
+      // Absolute URL without hash; keep query (CDNs often encode size there)
+      const u = new URL(src, document.baseURI);
+      u.hash = '';
+      return u.href;
+    } catch {
+      return String(src).split('#')[0];
+    }
+  }
+
+  /**
+   * True if two DOM images represent the same selectable visual.
+   * Handles stacked/nested imgs on shopping grids (Google, etc.).
+   */
+  function isSameSelection(img1, img2) {
+    if (!img1 || !img2) return false;
+    if (img1 === img2) return true;
+
+    // One contains the other (nested / picture wrappers)
+    try {
+      if (img1.contains && img1.contains(img2)) return true;
+      if (img2.contains && img2.contains(img1)) return true;
+      if (img1.parentElement && img1.parentElement.contains(img2) && img2.parentElement && img2.parentElement.contains(img1)) {
+        // Shared parent and overlapping boxes with same/similar src
+        const r1 = img1.getBoundingClientRect();
+        const r2 = img2.getBoundingClientRect();
+        if (rectsIoU(r1, r2) > 0.35) {
+          const s1 = normalizeSrc(resolveSrc(img1));
+          const s2 = normalizeSrc(resolveSrc(img2));
+          if (s1 && s2 && (s1 === s2 || s1.includes(s2) || s2.includes(s1))) return true;
+          // Heavily overlapping in the same card even if src differs (overlay icons rare)
+          if (rectsIoU(r1, r2) > 0.7) return true;
+        }
+      }
+    } catch (_) {
+      /* ignore */
     }
 
-    // Both already filled – ignore third image
-    if (state.imageA && state.imageB) return;
-
-    if (!state.imageA) {
-      state.imageA = snapshotImage(img);
-      img.classList.add('fas-selected-a');
-      placeBadge(img, 'A');
-    } else if (!state.imageB) {
-      state.imageB = snapshotImage(img);
-      img.classList.add('fas-selected-b');
-      placeBadge(img, 'B');
+    const s1 = normalizeSrc(resolveSrc(img1));
+    const s2 = normalizeSrc(resolveSrc(img2));
+    if (s1 && s2 && s1 === s2) {
+      const r1 = img1.getBoundingClientRect();
+      const r2 = img2.getBoundingClientRect();
+      // Same URL and substantially overlapping → same visual instance
+      if (rectsIoU(r1, r2) > 0.25) return true;
+      // Same URL, centres very close (stacked thumbnails)
+      const c1x = r1.left + r1.width / 2;
+      const c1y = r1.top + r1.height / 2;
+      const c2x = r2.left + r2.width / 2;
+      const c2y = r2.top + r2.height / 2;
+      const dist = Math.hypot(c1x - c2x, c1y - c2y);
+      if (dist < Math.max(20, Math.min(r1.width, r2.width) * 0.35)) return true;
     }
 
-    afterSelectionChange();
+    return false;
+  }
+
+  function slotMatchesImg(slotData, img) {
+    return !!(slotData && slotData.el && isSameSelection(slotData.el, img));
   }
 
   function clearSlot(side) {
     const key = side === 'A' ? 'imageA' : 'imageB';
     const data = state[key];
     if (data && data.el) {
-      data.el.classList.remove(side === 'A' ? 'fas-selected-a' : 'fas-selected-b');
-      removeBadgeFor(data.el);
+      try {
+        data.el.classList.remove(side === 'A' ? 'fas-selected-a' : 'fas-selected-b');
+      } catch (_) {
+        /* detached */
+      }
+      removeSelectionChrome(data.el);
     }
+    // Also strip any chrome still tagged with this side (orphan cleanup)
+    const orphans = [];
+    state.selectionChrome.forEach((chrome, el) => {
+      if (chrome.side === side) orphans.push(el);
+    });
+    orphans.forEach((el) => {
+      try {
+        el.classList.remove('fas-selected-a', 'fas-selected-b');
+      } catch (_) {}
+      removeSelectionChrome(el);
+    });
     state[key] = null;
+  }
+
+  function assignSlot(side, img) {
+    // Never allow the same visual in both slots
+    if (side === 'A' && slotMatchesImg(state.imageB, img)) clearSlot('B');
+    if (side === 'B' && slotMatchesImg(state.imageA, img)) clearSlot('A');
+
+    clearSlot(side);
+
+    const snap = snapshotImage(img);
+    if (side === 'A') {
+      state.imageA = snap;
+      img.classList.add('fas-selected-a');
+      img.classList.remove('fas-selected-b');
+    } else {
+      state.imageB = snap;
+      img.classList.add('fas-selected-b');
+      img.classList.remove('fas-selected-a');
+    }
+    placeSelectionChrome(img, side);
+  }
+
+  /**
+   * Hard guarantee: at most one A, one B, distinct visuals, chrome matches slots.
+   */
+  function enforceSelectionInvariants() {
+    // Drop B if it collides with A
+    if (state.imageA && state.imageB && isSameSelection(state.imageA.el, state.imageB.el)) {
+      clearSlot('B');
+    }
+
+    // Rebuild chrome from authoritative slots only
+    const allowed = new Set();
+    if (state.imageA && state.imageA.el && state.imageA.el.isConnected) {
+      allowed.add(state.imageA.el);
+      state.imageA.el.classList.add('fas-selected-a');
+      state.imageA.el.classList.remove('fas-selected-b');
+      placeSelectionChrome(state.imageA.el, 'A');
+    } else if (state.imageA) {
+      state.imageA = null;
+    }
+
+    if (state.imageB && state.imageB.el && state.imageB.el.isConnected) {
+      // Re-check collision after A placement
+      if (state.imageA && isSameSelection(state.imageA.el, state.imageB.el)) {
+        clearSlot('B');
+      } else {
+        allowed.add(state.imageB.el);
+        state.imageB.el.classList.add('fas-selected-b');
+        state.imageB.el.classList.remove('fas-selected-a');
+        placeSelectionChrome(state.imageB.el, 'B');
+      }
+    } else if (state.imageB) {
+      state.imageB = null;
+    }
+
+    // Source chrome (third slot — does not conflict with A/B for identity)
+    if (state.imageSource && state.imageSource.el && state.imageSource.el.isConnected) {
+      allowed.add(state.imageSource.el);
+      state.imageSource.el.classList.add('fas-selected-s');
+      state.imageSource.el.classList.remove('fas-selected-a', 'fas-selected-b');
+      placeSelectionChrome(state.imageSource.el, 'S');
+    } else if (state.imageSource && (!state.imageSource.el || !state.imageSource.el.isConnected)) {
+      state.imageSource = null;
+    }
+
+    // Remove any leftover chrome not belonging to current slots
+    const extras = [];
+    state.selectionChrome.forEach((_c, el) => {
+      if (!allowed.has(el)) extras.push(el);
+    });
+    extras.forEach((el) => {
+      try {
+        el.classList.remove('fas-selected-a', 'fas-selected-b', 'fas-selected-s');
+      } catch (_) {}
+      removeSelectionChrome(el);
+    });
+  }
+
+  function selectImage(img) {
+    if (!img || !isValidSelectable(img)) return;
+
+    // Debounce identical rapid events (capture + bubble leftovers, synthetic doubles)
+    const now = Date.now();
+    if (state.lastSelectImg === img && now - state.lastSelectTs < 80) {
+      return;
+    }
+    state.lastSelectTs = now;
+    state.lastSelectImg = img;
+
+    // Source-pick mode: A and B stay selected; assign Source and reopen comparison
+    if (state.selectingSource) {
+      // Source must be a third image (not the same visual as A or B)
+      if (slotMatchesImg(state.imageA, img) || slotMatchesImg(state.imageB, img)) {
+        return;
+      }
+      assignSource(img);
+      state.selectingSource = false;
+      updateBanner();
+      enforceSelectionInvariants();
+      openComparison();
+      return;
+    }
+
+    // Clicking an already-selected visual deselects that slot
+    if (slotMatchesImg(state.imageA, img)) {
+      clearSlot('A');
+      enforceSelectionInvariants();
+      afterSelectionChange();
+      return;
+    }
+    if (slotMatchesImg(state.imageB, img)) {
+      clearSlot('B');
+      enforceSelectionInvariants();
+      afterSelectionChange();
+      return;
+    }
+
+    // Both slots filled — require deselect first (unless picking source)
+    if (state.imageA && state.imageB) {
+      return;
+    }
+
+    if (!state.imageA) {
+      assignSlot('A', img);
+    } else if (!state.imageB) {
+      // Final guard: never assign B if it is the same visual as A
+      if (slotMatchesImg(state.imageA, img)) {
+        return;
+      }
+      assignSlot('B', img);
+    }
+
+    enforceSelectionInvariants();
+    afterSelectionChange();
   }
 
   function afterSelectionChange() {
     updateFab();
-    // If both deselected while active, fully deactivate
     if (!state.imageA && !state.imageB) {
-      if (state.comparing) closeComparison(false);
+      requestCloseComparison();
       deactivate();
     }
   }
 
   function onDocumentClick(e) {
-    if (!state.active) return;
-    // Ignore clicks inside our UI
-    if (e.target.closest && e.target.closest('.fas-panel, .fas-fab, .fas-banner')) {
+    if (state.destroyed) return;
+    if (!isExtensionContextValid()) {
+      handleContextInvalidated();
       return;
     }
+    if (!state.active) return;
+    if (isOurUi(e.target)) return;
 
-    const img = findImageTarget(e.target);
+    const img = findImageTarget(e);
     if (!img) return;
 
     e.preventDefault();
     e.stopPropagation();
-    selectImage(img);
+    e.stopImmediatePropagation();
+    try {
+      selectImage(img);
+    } catch (err) {
+      if (isContextInvalidError(err)) handleContextInvalidated();
+      else console.warn('[Flick and Slide] selectImage failed:', err);
+    }
   }
 
-  function findImageTarget(target) {
-    if (!target) return null;
-    if (target.nodeName === 'IMG' && state.selectableImgs.has(target)) return target;
-    // Walk up a few levels for wrapped images
-    let el = target;
-    for (let i = 0; i < 4 && el; i++) {
-      if (el.nodeName === 'IMG' && state.selectableImgs.has(el)) return el;
-      el = el.parentElement;
+  /**
+   * Resolve the intended image under the pointer.
+   * Prefer the largest selectable img at the click point (product photo, not icon).
+   */
+  function findImageTarget(e) {
+    const x = e.clientX;
+    const y = e.clientY;
+    const candidates = [];
+
+    try {
+      const stack = document.elementsFromPoint(x, y);
+      for (let i = 0; i < stack.length; i++) {
+        const el = stack[i];
+        if (isOurUi(el)) continue;
+        if (el.nodeName === 'IMG' && state.selectableImgs.has(el) && isValidSelectable(el)) {
+          candidates.push(el);
+        }
+        // Also consider imgs inside a clicked container near the top of the stack
+        if (candidates.length === 0 && el.querySelectorAll && i < 3) {
+          el.querySelectorAll('img').forEach((img) => {
+            if (state.selectableImgs.has(img) && isValidSelectable(img)) {
+              const r = img.getBoundingClientRect();
+              if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+                candidates.push(img);
+              }
+            }
+          });
+        }
+      }
+    } catch (_) {
+      /* elementsFromPoint may throw in rare cases */
     }
-    // Picture/source parent containing img
-    if (target.closest) {
-      const pic = target.closest('picture');
-      if (pic) {
-        const img = pic.querySelector('img');
-        if (img && state.selectableImgs.has(img)) return img;
+
+    if (candidates.length === 0) {
+      // Fallback: walk up from event target
+      let el = e.target;
+      for (let i = 0; i < 6 && el; i++) {
+        if (el.nodeName === 'IMG' && state.selectableImgs.has(el) && isValidSelectable(el)) {
+          candidates.push(el);
+          break;
+        }
+        el = el.parentElement;
       }
     }
-    return null;
+
+    if (candidates.length === 0) return null;
+
+    // Deduplicate by same-selection identity, keep largest
+    const unique = [];
+    candidates.forEach((img) => {
+      const existing = unique.find((u) => isSameSelection(u, img));
+      if (!existing) unique.push(img);
+      else if (imageArea(img) > imageArea(existing)) {
+        unique[unique.indexOf(existing)] = img;
+      }
+    });
+
+    unique.sort((a, b) => imageArea(b) - imageArea(a));
+    return unique[0] || null;
   }
 
   // ---------------------------------------------------------------------------
@@ -390,7 +930,8 @@
 
   function updateFab() {
     const both = !!(state.imageA && state.imageB);
-    if (both && state.active && !state.comparing) {
+    // Hide FAB while comparison window is open; show again when it closes.
+    if (both && state.active && !state.comparing && !state.selectingSource) {
       if (!state.fab) {
         const fab = $('button', 'fas-fab', {
           type: 'button',
@@ -411,427 +952,97 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Comparison window
+  // Comparison window (separate Chrome window via background)
   // ---------------------------------------------------------------------------
 
   function openComparison() {
     if (!state.imageA || !state.imageB) return;
-    // Refresh src in case of lazy-load completion
+
     if (state.imageA.el) {
       state.imageA.src = resolveSrc(state.imageA.el) || state.imageA.src;
     }
     if (state.imageB.el) {
       state.imageB.src = resolveSrc(state.imageB.el) || state.imageB.src;
     }
+    if (state.imageSource && state.imageSource.el) {
+      state.imageSource.src =
+        resolveSrc(state.imageSource.el) || state.imageSource.src;
+    }
 
-    state.comparing = true;
-    state.mode = 'flick';
-    state.flickSide = 'A';
-    state.sliderPct = 50;
-    updateFab();
-    buildPanel();
+    if (!state.imageA.src || !state.imageB.src) {
+      console.warn('[Flick and Slide] Missing image src; cannot open comparison.');
+      return;
+    }
+
+    safeSendMessage(
+      {
+        type: FAS_OPEN_COMPARISON,
+        payload: {
+          imageA: toPayloadImage(state.imageA),
+          imageB: toPayloadImage(state.imageB),
+          imageSource: state.imageSource
+            ? toPayloadImage(state.imageSource)
+            : null,
+        },
+      },
+      (response, lastErr) => {
+        if (state.destroyed) return;
+        if (lastErr) {
+          console.error(
+            '[Flick and Slide] Open comparison failed:',
+            lastErr.message || lastErr
+          );
+          return;
+        }
+        if (response && response.ok) {
+          state.comparing = true;
+          updateFab();
+        } else if (response) {
+          console.error(
+            '[Flick and Slide] Open comparison rejected:',
+            response.error
+          );
+        }
+      }
+    );
+  }
+
+  function requestCloseComparison() {
+    if (!state.comparing) return;
+    if (!isExtensionContextValid()) {
+      // Cannot reach background — still fully exit locally
+      deactivate();
+      return;
+    }
+    // Keep comparing=true until FAS_COMPARISON_CLOSED (from any close path).
+    safeSendMessage({ type: FAS_CLOSE_COMPARISON }, (_response, lastErr) => {
+      // If background failed to respond, force full local exit
+      if (lastErr && state.active) {
+        deactivate();
+      }
+    });
   }
 
   /**
-   * @param {boolean} keepSelectionMode
+   * Comparison window closed by any means:
+   * - In-window × / Close tool / Esc
+   * - OS or Chrome window close (any size: Small, Medium, Maximised, Full Screen)
+   * Fully exit the tool — do not leave selection mode / A·B highlights active.
    */
-  function closeComparison(keepSelectionMode) {
+  function onComparisonClosed() {
     state.comparing = false;
-    teardownPanelDrag();
-    removeEl(state.panel);
-    state.panel = null;
-    if (keepSelectionMode && state.active) {
+    state.selectingSource = false;
+    if (state.active) {
+      deactivate();
+    } else {
       updateFab();
     }
   }
 
-  function buildPanel() {
-    removeEl(state.panel);
-
-    const panel = $('div', 'fas-panel fas-panel--' + state.viewSize, {
-      role: 'dialog',
-      'aria-label': 'Image Comparison – A vs B',
-    });
-
-    // Header
-    const header = $('div', 'fas-panel__header');
-
-    const left = $('div', 'fas-panel__header-left');
-    const closeBtn = $('button', 'fas-btn fas-btn--close', {
-      type: 'button',
-      title: 'Close comparison tool',
-      'aria-label': 'Close comparison tool',
-      text: '×',
-    });
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeComparison(true);
-    });
-    left.appendChild(closeBtn);
-
-    const title = $('div', 'fas-panel__title', {
-      text: 'Image Comparison – A vs B',
-    });
-
-    const right = $('div', 'fas-panel__header-right');
-
-    // View toggles
-    const viewGroup = $('div', 'fas-view-toggles', { role: 'group', 'aria-label': 'View size' });
-    ['small', 'normal', 'maximised'].forEach((size) => {
-      const label =
-        size === 'small' ? 'Small' : size === 'normal' ? 'Normal' : 'Maximised';
-      const btn = $('button', 'fas-btn' + (state.viewSize === size ? ' is-active' : ''), {
-        type: 'button',
-        text: label,
-        'data-size': size,
-      });
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        setViewSize(size);
-      });
-      viewGroup.appendChild(btn);
-    });
-
-    // Mode tabs
-    const modeGroup = $('div', 'fas-mode-tabs', { role: 'tablist', 'aria-label': 'Comparison mode' });
-    const flickTab = $('button', 'fas-btn is-active', {
-      type: 'button',
-      text: 'Flick Between Images',
-      role: 'tab',
-      'aria-selected': 'true',
-      'data-mode': 'flick',
-    });
-    const sliderTab = $('button', 'fas-btn', {
-      type: 'button',
-      text: 'Comparison Slider',
-      role: 'tab',
-      'aria-selected': 'false',
-      'data-mode': 'slider',
-    });
-    flickTab.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setMode('flick');
-    });
-    sliderTab.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setMode('slider');
-    });
-    modeGroup.appendChild(flickTab);
-    modeGroup.appendChild(sliderTab);
-
-    right.appendChild(viewGroup);
-    right.appendChild(modeGroup);
-
-    header.appendChild(left);
-    header.appendChild(title);
-    header.appendChild(right);
-
-    // Body
-    const body = $('div', 'fas-panel__body');
-
-    // Flick pane
-    const flickPane = $('div', 'fas-mode-pane is-visible', { 'data-pane': 'flick' });
-    const flick = $('div', 'fas-flick');
-    const stage = $('div', 'fas-flick__stage');
-    const flickImg = $('img', 'fas-flick__img', {
-      alt: 'Image A',
-      draggable: 'false',
-    });
-    flickImg.src = state.imageA.src;
-    attachImageFallback(flickImg, 'Image A');
-    stage.appendChild(flickImg);
-
-    const controls = $('div', 'fas-flick__controls');
-    const label = $('div', 'fas-flick__label', { text: 'Image A' });
-    label.setAttribute('data-side', 'A');
-    const swapBtn = $('button', 'fas-btn fas-btn--primary', {
-      type: 'button',
-      text: 'Swap to Image B',
-    });
-    swapBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      swapFlick();
-    });
-    controls.appendChild(label);
-    controls.appendChild(swapBtn);
-    flick.appendChild(stage);
-    flick.appendChild(controls);
-    flickPane.appendChild(flick);
-
-    // Slider pane
-    const sliderPane = $('div', 'fas-mode-pane', { 'data-pane': 'slider' });
-    const slider = buildSlider();
-    sliderPane.appendChild(slider);
-
-    body.appendChild(flickPane);
-    body.appendChild(sliderPane);
-
-    // Footer
-    const footer = $('div', 'fas-panel__footer');
-    const labels = $('div', 'fas-panel__footer-labels');
-    labels.appendChild($('span', null, { text: 'Image A' }));
-    labels.appendChild($('span', null, { text: 'Image B' }));
-    const resetBtn = $('button', 'fas-btn fas-btn--ghost', {
-      type: 'button',
-      text: 'Reset & Return to Selection',
-    });
-    resetBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeComparison(true);
-    });
-    footer.appendChild(labels);
-    footer.appendChild(resetBtn);
-
-    panel.appendChild(header);
-    panel.appendChild(body);
-    panel.appendChild(footer);
-    document.documentElement.appendChild(panel);
-    state.panel = panel;
-
-    // Store refs for updates
-    panel._fas = {
-      flickImg,
-      flickLabel: label,
-      swapBtn,
-      flickPane,
-      sliderPane,
-      flickTab,
-      sliderTab,
-      viewGroup,
-      slider,
-    };
-
-    centerPanel(panel);
-    enablePanelDrag(header, panel);
-    applySliderPct(state.sliderPct);
-  }
-
-  function setViewSize(size) {
-    state.viewSize = size;
-    if (!state.panel) return;
-    state.panel.classList.remove('fas-panel--small', 'fas-panel--normal', 'fas-panel--maximised');
-    state.panel.classList.add('fas-panel--' + size);
-    const group = state.panel._fas && state.panel._fas.viewGroup;
-    if (group) {
-      group.querySelectorAll('.fas-btn').forEach((btn) => {
-        btn.classList.toggle('is-active', btn.getAttribute('data-size') === size);
-      });
-    }
-    // Re-center on size change for predictability
-    requestAnimationFrame(() => centerPanel(state.panel));
-  }
-
-  function setMode(mode) {
-    state.mode = mode;
-    if (!state.panel || !state.panel._fas) return;
-    const { flickPane, sliderPane, flickTab, sliderTab } = state.panel._fas;
-    const isFlick = mode === 'flick';
-    flickPane.classList.toggle('is-visible', isFlick);
-    sliderPane.classList.toggle('is-visible', !isFlick);
-    flickTab.classList.toggle('is-active', isFlick);
-    sliderTab.classList.toggle('is-active', !isFlick);
-    flickTab.setAttribute('aria-selected', isFlick ? 'true' : 'false');
-    sliderTab.setAttribute('aria-selected', isFlick ? 'false' : 'true');
-  }
-
-  function swapFlick() {
-    if (!state.panel || !state.panel._fas) return;
-    const { flickImg, flickLabel, swapBtn } = state.panel._fas;
-    const next = state.flickSide === 'A' ? 'B' : 'A';
-    const data = next === 'A' ? state.imageA : state.imageB;
-
-    // Brief crossfade polish
-    flickImg.classList.add('is-fading');
-    window.setTimeout(() => {
-      flickImg.src = data.src;
-      flickImg.alt = 'Image ' + next;
-      flickImg.classList.remove('is-fading');
-    }, 50);
-
-    state.flickSide = next;
-    flickLabel.textContent = 'Image ' + next;
-    flickLabel.setAttribute('data-side', next);
-    swapBtn.textContent = 'Swap to Image ' + (next === 'A' ? 'B' : 'A');
-  }
-
-  // ---------------------------------------------------------------------------
-  // Slider (adapted from sneas/img-comparison-slider technique)
-  // ---------------------------------------------------------------------------
-
-  function buildSlider() {
-    const root = $('div', 'fas-slider', {
-      role: 'slider',
-      'aria-label': 'Image comparison slider',
-      'aria-valuemin': '0',
-      'aria-valuemax': '100',
-      'aria-valuenow': String(state.sliderPct),
-      tabindex: '0',
-    });
-    root.style.setProperty('--fas-exposure', state.sliderPct + '%');
-
-    const layerB = $('div', 'fas-slider__layer fas-slider__layer--b');
-    const imgB = $('img', null, { alt: 'Image B', draggable: 'false' });
-    imgB.src = state.imageB.src;
-    attachImageFallback(imgB, 'Image B');
-    layerB.appendChild(imgB);
-
-    const layerA = $('div', 'fas-slider__layer fas-slider__layer--a');
-    const imgA = $('img', null, { alt: 'Image A', draggable: 'false' });
-    imgA.src = state.imageA.src;
-    attachImageFallback(imgA, 'Image A');
-    layerA.appendChild(imgA);
-
-    const handle = $('div', 'fas-slider__handle');
-    const line = $('div', 'fas-slider__line');
-    const grip = $('div', 'fas-slider__grip', { html: '‹›', title: 'Drag to compare' });
-    const gripLabel = $('div', 'fas-slider__grip-label', { text: 'Drag to compare' });
-    handle.appendChild(line);
-    handle.appendChild(grip);
-    handle.appendChild(gripLabel);
-
-    root.appendChild(layerB);
-    root.appendChild(layerA);
-    root.appendChild(handle);
-
-    const onPointerDown = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      state.sliderDragging = true;
-      try {
-        root.setPointerCapture(e.pointerId);
-      } catch (_) {}
-      updateSliderFromEvent(e, root);
-      document.body.style.userSelect = 'none';
-    };
-
-    const onPointerMove = (e) => {
-      if (!state.sliderDragging) return;
-      e.preventDefault();
-      updateSliderFromEvent(e, root);
-    };
-
-    const onPointerUp = (e) => {
-      if (!state.sliderDragging) return;
-      state.sliderDragging = false;
-      try {
-        root.releasePointerCapture(e.pointerId);
-      } catch (_) {}
-      document.body.style.userSelect = '';
-    };
-
-    root.addEventListener('pointerdown', onPointerDown);
-    root.addEventListener('pointermove', onPointerMove);
-    root.addEventListener('pointerup', onPointerUp);
-    root.addEventListener('pointercancel', onPointerUp);
-
-    // Keyboard: arrows nudge the handle
-    root.addEventListener('keydown', (e) => {
-      let delta = 0;
-      if (e.key === 'ArrowLeft') delta = -2;
-      if (e.key === 'ArrowRight') delta = 2;
-      if (!delta) return;
-      e.preventDefault();
-      applySliderPct(state.sliderPct + delta);
-    });
-
-    root._fasCleanup = () => {
-      root.removeEventListener('pointerdown', onPointerDown);
-      root.removeEventListener('pointermove', onPointerMove);
-      root.removeEventListener('pointerup', onPointerUp);
-      root.removeEventListener('pointercancel', onPointerUp);
-    };
-
-    return root;
-  }
-
-  function updateSliderFromEvent(e, root) {
-    const rect = root.getBoundingClientRect();
-    if (!rect.width) return;
-    const x = e.clientX - rect.left;
-    const pct = clamp((x / rect.width) * 100, 0, 100);
-    applySliderPct(pct);
-  }
-
-  function applySliderPct(pct) {
-    state.sliderPct = clamp(pct, 0, 100);
-    if (!state.panel || !state.panel._fas || !state.panel._fas.slider) return;
-    const slider = state.panel._fas.slider;
-    slider.style.setProperty('--fas-exposure', state.sliderPct + '%');
-    slider.setAttribute('aria-valuenow', String(Math.round(state.sliderPct)));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Panel drag
-  // ---------------------------------------------------------------------------
-
-  function enablePanelDrag(header, panel) {
-    const onPointerDown = (e) => {
-      // Don't drag when interacting with controls
-      if (e.target.closest('button, a, input, select, textarea, .fas-view-toggles, .fas-mode-tabs')) {
-        return;
-      }
-      e.preventDefault();
-      const rect = panel.getBoundingClientRect();
-      state.drag = {
-        panel,
-        offsetX: e.clientX - rect.left,
-        offsetY: e.clientY - rect.top,
-        pointerId: e.pointerId,
-      };
-      try {
-        header.setPointerCapture(e.pointerId);
-      } catch (_) {}
-      document.body.style.userSelect = 'none';
-    };
-
-    const onPointerMove = (e) => {
-      if (!state.drag || state.drag.panel !== panel) return;
-      const w = panel.offsetWidth;
-      const h = panel.offsetHeight;
-      let left = e.clientX - state.drag.offsetX;
-      let top = e.clientY - state.drag.offsetY;
-      left = clamp(left, 0, Math.max(0, window.innerWidth - w));
-      top = clamp(top, 0, Math.max(0, window.innerHeight - h));
-      panel.style.left = left + 'px';
-      panel.style.top = top + 'px';
-    };
-
-    const onPointerUp = (e) => {
-      if (!state.drag) return;
-      state.drag = null;
-      try {
-        header.releasePointerCapture(e.pointerId);
-      } catch (_) {}
-      document.body.style.userSelect = '';
-    };
-
-    header.addEventListener('pointerdown', onPointerDown);
-    header.addEventListener('pointermove', onPointerMove);
-    header.addEventListener('pointerup', onPointerUp);
-    header.addEventListener('pointercancel', onPointerUp);
-
-    panel._fasDragCleanup = () => {
-      header.removeEventListener('pointerdown', onPointerDown);
-      header.removeEventListener('pointermove', onPointerMove);
-      header.removeEventListener('pointerup', onPointerUp);
-      header.removeEventListener('pointercancel', onPointerUp);
-    };
-  }
-
-  function teardownPanelDrag() {
-    if (state.panel && state.panel._fasDragCleanup) {
-      try {
-        state.panel._fasDragCleanup();
-      } catch (_) {}
-    }
-    if (state.panel && state.panel._fas && state.panel._fas.slider && state.panel._fas.slider._fasCleanup) {
-      try {
-        state.panel._fas.slider._fasCleanup();
-      } catch (_) {}
-    }
-    state.drag = null;
-    state.sliderDragging = false;
-    document.body.style.userSelect = '';
+  function onEnterSourcePick() {
+    // Comparison closed temporarily so the user can pick a source image
+    state.comparing = false;
+    enterSourcePickMode();
   }
 
   // ---------------------------------------------------------------------------
@@ -839,22 +1050,34 @@
   // ---------------------------------------------------------------------------
 
   function onKeyDown(e) {
+    if (state.destroyed) return;
+    if (!isExtensionContextValid()) {
+      handleContextInvalidated();
+      return;
+    }
     if (isTypingTarget(e.target)) return;
 
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       if (state.comparing) {
-        closeComparison(true);
+        requestCloseComparison();
+      } else if (state.selectingSource) {
+        cancelSourcePick();
       } else if (state.active) {
         deactivate();
       }
       return;
     }
 
-    // "C" opens compare when both images selected
     if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (state.active && !state.comparing && state.imageA && state.imageB) {
+      if (
+        state.active &&
+        !state.comparing &&
+        !state.selectingSource &&
+        state.imageA &&
+        state.imageB
+      ) {
         e.preventDefault();
         openComparison();
       }
@@ -862,32 +1085,70 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Messaging from background service worker
+  // Messaging
   // ---------------------------------------------------------------------------
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg && msg.type === FAS_MESSAGE) {
-      toggle();
-      sendResponse({ ok: true, active: state.active, comparing: state.comparing });
-      return true;
+  function onRuntimeMessage(msg, _sender, sendResponse) {
+    if (state.destroyed) return false;
+    if (!isExtensionContextValid()) {
+      handleContextInvalidated();
+      return false;
     }
-    return false;
-  });
+    if (!msg || !msg.type) return false;
 
-  // Public API for re-injection path
+    try {
+      if (msg.type === FAS_TOGGLE) {
+        toggle();
+        sendResponse({ ok: true, active: state.active, comparing: state.comparing });
+        return true;
+      }
+
+      if (msg.type === FAS_COMPARISON_CLOSED) {
+        onComparisonClosed();
+        sendResponse({ ok: true });
+        return true;
+      }
+
+      if (msg.type === FAS_ENTER_SOURCE_PICK) {
+        onEnterSourcePick();
+        sendResponse({ ok: true });
+        return true;
+      }
+    } catch (err) {
+      if (isContextInvalidError(err)) handleContextInvalidated();
+      else console.warn('[Flick and Slide] onMessage failed:', err);
+    }
+
+    return false;
+  }
+
+  state.onMessage = onRuntimeMessage;
+  try {
+    chrome.runtime.onMessage.addListener(onRuntimeMessage);
+  } catch (err) {
+    if (isContextInvalidError(err)) {
+      handleContextInvalidated();
+      return;
+    }
+    throw err;
+  }
+
   window.__FLICK_AND_SLIDE__ = {
     toggle,
     activate,
     deactivate,
+    destroy,
+    isAlive: () => !state.destroyed && isExtensionContextValid(),
     getState: () => ({
       active: state.active,
       comparing: state.comparing,
       hasA: !!state.imageA,
       hasB: !!state.imageB,
-      mode: state.mode,
+      hasSource: !!state.imageSource,
+      selectingSource: state.selectingSource,
+      destroyed: state.destroyed,
     }),
   };
 
-  // First injection: start selection mode immediately
   activate();
 })();

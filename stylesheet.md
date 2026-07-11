@@ -217,3 +217,32 @@ Both images use `object-fit: contain` inside the same container so rendered pixe
 ## Theme
 
 **Dark theme only** in v1.0. Soft shadows, rounded corners, system sans-serif. No light-theme toggle yet.
+
+---
+
+## v2.0 UI notes
+
+### Comparison window (comparison.css)
+- Full-window app shell (`.fas-app`), not injected into the host page.
+- View sizes: Small / Medium / Maximised / Full Screen (OS window states via background).
+- Flick with source: `.fas-flick.has-source` → left `.fas-flick__source`, right `.fas-flick__main`.
+- Fit modes: `.is-fit-fill` / `.is-fit-original` on `.fas-app` (cursor zoom-out when filled, zoom-in when original).
+- AR badges: `.fas-ar-badge`; slider mismatch modal `.fas-ar-modal` + bar `.fas-ar-warning--bar`.
+
+### Page selection (content.css)
+- Rings: `.fas-ring--a` (green), `.fas-ring--b` (blue), `.fas-ring--s` (amber source).
+- Badges: `.fas-badge--a|b|s`.
+- Banner: `.fas-banner` + `.fas-banner__close` (Close tool / Cancel).
+- Tokens: `--fas-accent-s` / `--fas-accent-s-soft` for source.
+
+### Copy (user-facing)
+| Location | Text |
+|----------|------|
+| Banner | Select the two images to compare |
+| Source pick banner | Select a source image (A and B stay selected) |
+| FAB | Compare Images |
+| Flick source button | Add a source image / Change source image |
+| Fit hint (fill) | Showing the image filling the frame - click an image to return to original size |
+| Fit hint (original) | Showing original size - click an image to fill the frame |
+| Close footer | Close tool |
+| AR badge | AR: 16:9 (example) |
