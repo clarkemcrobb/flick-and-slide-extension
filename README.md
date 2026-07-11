@@ -2,7 +2,7 @@
 
 **v2.0.0** · Chrome extension (Manifest V3)
 
-Select any two images on a webpage and compare them in a **dedicated Chrome window** (not trapped inside the page). Vanilla JS/CSS only — no frameworks.
+Select any two images on a webpage and compare them in a **dedicated Chrome window** to each other or a third (source) image to compare both edits to. Vanilla JS/CSS only — no frameworks.
 
 **Repo:** https://github.com/clarkemcrobb/flick-and-slide-extension
 
