@@ -61,33 +61,38 @@
 /* -------------------------------------------------------------------------- */
 /* Selection mode – page images                                               */
 /* -------------------------------------------------------------------------- */
-img.fas-selectable {
+img.fas-selectable,
+video.fas-selectable {
   cursor: pointer !important;
   outline: 2px solid transparent !important;
   outline-offset: 3px !important;
   transition: outline-color var(--fas-transition), box-shadow var(--fas-transition) !important;
 }
 
-img.fas-selectable:hover {
+img.fas-selectable:hover,
+video.fas-selectable:hover {
   outline: 2px solid var(--fas-accent) !important;
   outline-offset: 3px !important;
   box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.25) !important;
 }
 
 /* Backup on the image itself (may lose to host CSS; ring overlays are primary) */
-img.fas-selected-a {
+img.fas-selected-a,
+video.fas-selected-a {
   outline: 3px solid var(--fas-accent-a) !important;
   outline-offset: 3px !important;
   box-shadow: 0 0 0 4px var(--fas-accent-a-soft) !important;
 }
 
-img.fas-selected-b {
+img.fas-selected-b,
+video.fas-selected-b {
   outline: 3px solid var(--fas-accent-b) !important;
   outline-offset: 3px !important;
   box-shadow: 0 0 0 4px var(--fas-accent-b-soft) !important;
 }
 
-img.fas-selected-s {
+img.fas-selected-s,
+video.fas-selected-s {
   outline: 3px solid var(--fas-accent-s) !important;
   outline-offset: 3px !important;
   box-shadow: 0 0 0 4px var(--fas-accent-s-soft) !important;
@@ -192,6 +197,25 @@ img.fas-selected-s {
   text-overflow: ellipsis !important;
   min-width: 0 !important;
   flex: 1 1 auto !important;
+}
+
+.fas-banner__error {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #ffb4a9 !important;
+  background: rgba(218, 54, 51, 0.25) !important;
+  border: 1px solid rgba(248, 81, 73, 0.55) !important;
+  border-radius: var(--fas-radius-pill) !important;
+  padding: 4px 10px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.fas-banner__error[hidden] {
+  display: none !important;
 }
 
 .fas-banner__close {

@@ -1,9 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Flick and Slide",
-  "version": "2.0.0",
-  "description": "Flick and Slide – Select any two images on a webpage and compare them in a dedicated window: Flick, Side by Side, or Comparison Slider, with optional source image and aspect-ratio guidance.",
-  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "version": "3.0.0",
+  "description": "Flick and Slide \u2013 Compare images or videos from any webpage in a dedicated window. Flick, Side by Side, or Comparison Slider, with optional source media and synced video playback.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "contextMenus"
+  ],
   "host_permissions": [
     "https://raw.githubusercontent.com/*",
     "https://api.github.com/*"
@@ -12,7 +17,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Flick and Slide – Select images to compare",
+    "default_title": "Flick and Slide \u2013 Select images to compare",
     "default_icon": {
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"

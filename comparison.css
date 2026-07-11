@@ -516,12 +516,62 @@ body {
   overflow: auto;
 }
 
-.fas-flick__img {
+.fas-flick__img,
+.fas-side__stage .fas-fit-img,
+.fas-slider__layer img,
+.fas-slider__layer video {
   display: block;
   transition: opacity 100ms ease;
   user-select: none;
   -webkit-user-drag: none;
   cursor: zoom-out;
+}
+
+.fas-media-video {
+  background: #000;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.fas-slider__layer video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* Video transport bar */
+.fas-transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+  width: 100%;
+}
+
+.fas-transport[hidden] {
+  display: none !important;
+}
+
+.fas-transport__scrub {
+  flex: 1 1 120px;
+  min-width: 80px;
+  accent-color: #58a6ff;
+}
+
+.fas-transport__time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--fas-text-muted);
+  white-space: nowrap;
+  min-width: 11.5em;
+  text-align: right;
+}
+
+.fas-app.is-video-session .fas-panel__footer-hint {
+  /* still useful for fill/original on video frames */
 }
 
 .fas-flick__img.is-fading {
@@ -551,6 +601,11 @@ body {
   max-height: none;
   object-fit: none;
   cursor: zoom-in;
+}
+
+.fas-media-video[hidden],
+.fas-media-img[hidden] {
+  display: none !important;
 }
 
 .fas-flick__label {

@@ -14,6 +14,8 @@ const state = {
   imageA: null,
   imageB: null,
   imageSource: null,
+  /** @type {'image'|'video'} */
+  mediaKind: 'image',
   mode: 'flick',
   flickSide: 'A',
   viewSize: 'normal',
@@ -23,6 +25,7 @@ const state = {
   imageFit: 'fill',
   /** User dismissed the full AR mismatch modal for this slider visit */
   arWarningDismissed: false,
+  videoMutedAll: false,
 };
 
 function clamp(n, min, max) {
@@ -72,11 +75,31 @@ function requestSourcePick() {
   });
 }
 
-const MODE_TITLES = {
-  flick: 'Flick Between Images – A vs B',
-  slider: 'Comparison Slider – A vs B',
-  side: 'Side by Side – A vs B',
-};
+function getModeTitles() {
+  if (state.mediaKind === 'video') {
+    return {
+      flick: 'Flick Between Videos – A vs B',
+      slider: 'Comparison Slider – A vs B',
+      side: 'Side by Side – A vs B',
+    };
+  }
+  return {
+    flick: 'Flick Between Images – A vs B',
+    slider: 'Comparison Slider – A vs B',
+    side: 'Side by Side – A vs B',
+  };
+}
+
+function nounA() {
+  return state.mediaKind === 'video' ? 'Video A' : 'Image A';
+}
+function nounB() {
+  return state.mediaKind === 'video' ? 'Video B' : 'Image B';
+}
+function nounSource() {
+  return state.mediaKind === 'video' ? 'Source video' : 'Source image';
+}
+
 
 /**
  * Common aspect ratios to snap to (order does not matter; closest match wins).
@@ -166,12 +189,17 @@ function nearestAspectRatio(naturalW, naturalH) {
   };
 }
 
-function dimsForImageData(data, fallbackImg) {
+function dimsForImageData(data, fallbackEl) {
   let w = data && data.naturalWidth ? data.naturalWidth : 0;
   let h = data && data.naturalHeight ? data.naturalHeight : 0;
-  if ((!w || !h) && fallbackImg) {
-    w = fallbackImg.naturalWidth || 0;
-    h = fallbackImg.naturalHeight || 0;
+  if ((!w || !h) && fallbackEl) {
+    if (fallbackEl.nodeName === 'VIDEO') {
+      w = fallbackEl.videoWidth || 0;
+      h = fallbackEl.videoHeight || 0;
+    } else {
+      w = fallbackEl.naturalWidth || 0;
+      h = fallbackEl.naturalHeight || 0;
+    }
   }
   return { w, h };
 }
@@ -327,7 +355,8 @@ function proceedArWarning() {
 }
 
 function setMode(mode) {
-  if (!MODE_TITLES[mode]) mode = 'flick';
+  const titles = getModeTitles();
+  if (!titles[mode]) mode = 'flick';
   const prevMode = state.mode;
   state.mode = mode;
 
@@ -341,21 +370,31 @@ function setMode(mode) {
   const paneSide = $('pane-side');
   if (paneSide) paneSide.classList.toggle('is-visible', mode === 'side');
 
-  const titleText = MODE_TITLES[mode];
+  const titleText = titles[mode];
   const titleEl = $('panel-title');
   if (titleEl) titleEl.textContent = titleText;
   document.title = titleText;
 
+  // Mode tab labels for video
+  const tabFlick = $('tab-flick');
+  if (tabFlick) {
+    tabFlick.textContent =
+      state.mediaKind === 'video' ? 'Flick Between Videos' : 'Flick Between Images';
+  }
+
   const sliderHint = $('slider-hint');
   if (sliderHint) {
-    // Only relevant in slider mode
     sliderHint.hidden = mode !== 'slider';
   }
 
-  // Fit toggle only applies to Flick and Side by Side
   const fitHint = $('fit-hint');
   if (fitHint) {
     fitHint.hidden = mode === 'slider';
+  }
+
+  const transport = $('transport');
+  if (transport) {
+    transport.hidden = state.mediaKind !== 'video';
   }
 
   document.querySelectorAll('#mode-tabs .fas-btn').forEach((btn) => {
@@ -363,6 +402,12 @@ function setMode(mode) {
     btn.classList.toggle('is-active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
+
+  // When switching modes, keep video timeline but ensure visibility layers correct
+  if (state.mediaKind === 'video') {
+    updateVideoLayerVisibility();
+    if (window.__fasVideoSync) window.__fasVideoSync.refreshDurations();
+  }
 
   applyImageFit();
   updateAspectRatioUi();
@@ -386,21 +431,32 @@ function applyImageFit() {
   });
 
   // Set intrinsic dimensions for original mode so layout uses natural pixels
-  const fitImgs = document.querySelectorAll('.fas-fit-img');
-  fitImgs.forEach((img) => {
+  document.querySelectorAll('.fas-fit-img').forEach((el) => {
+    if (el.hidden) {
+      el.style.width = '';
+      el.style.height = '';
+      return;
+    }
     if (isOriginal) {
-      const nw = img.naturalWidth || 0;
-      const nh = img.naturalHeight || 0;
-      if (nw > 0 && nh > 0) {
-        img.style.width = nw + 'px';
-        img.style.height = nh + 'px';
+      let nw = 0;
+      let nh = 0;
+      if (el.nodeName === 'VIDEO') {
+        nw = el.videoWidth || 0;
+        nh = el.videoHeight || 0;
       } else {
-        img.style.width = 'auto';
-        img.style.height = 'auto';
+        nw = el.naturalWidth || 0;
+        nh = el.naturalHeight || 0;
+      }
+      if (nw > 0 && nh > 0) {
+        el.style.width = nw + 'px';
+        el.style.height = nh + 'px';
+      } else {
+        el.style.width = 'auto';
+        el.style.height = 'auto';
       }
     } else {
-      img.style.width = '';
-      img.style.height = '';
+      el.style.width = '';
+      el.style.height = '';
     }
   });
 
@@ -517,30 +573,55 @@ function showFlickSide(side) {
   } else {
     next = state.flickSide === 'A' ? 'B' : 'A';
   }
-  if (next === state.flickSide) return;
+  if (next === state.flickSide && side !== 'A' && side !== 'B') {
+    // allow forced refresh when side specified as current
+  }
 
   const data = next === 'A' ? state.imageA : state.imageB;
   const flickImg = $('flick-img');
   const flickLabel = $('flick-label');
   const swapBtn = $('btn-swap');
+  const vidA = $('flick-vid-a');
+  const vidB = $('flick-vid-b');
 
-  flickImg.classList.add('is-fading');
-  window.setTimeout(() => {
-    flickImg.src = data.src;
-    flickImg.alt = 'Image ' + next;
-    flickImg.classList.remove('is-fading');
-    // Keep fill/original sizing consistent after swap
-    if (state.imageFit === 'original') {
-      const applyNat = () => applyImageFit();
-      if (flickImg.complete && flickImg.naturalWidth) applyNat();
-      else flickImg.addEventListener('load', applyNat, { once: true });
+  if (state.mediaKind === 'video') {
+    state.flickSide = next;
+    if (vidA) vidA.hidden = next !== 'A';
+    if (vidB) vidB.hidden = next !== 'B';
+    if (flickImg) flickImg.hidden = true;
+    if (flickLabel) {
+      flickLabel.textContent = next === 'A' ? nounA() : nounB();
+      flickLabel.setAttribute('data-side', next);
     }
-  }, 50);
+    if (swapBtn) {
+      swapBtn.textContent =
+        'Swap to ' + (next === 'A' ? nounB() : nounA());
+    }
+    return;
+  }
+
+  if (next === state.flickSide && flickImg && flickImg.src === data.src) {
+    // still update labels
+  }
+
+  if (flickImg) {
+    flickImg.classList.add('is-fading');
+    window.setTimeout(() => {
+      flickImg.src = data.src;
+      flickImg.alt = next === 'A' ? nounA() : nounB();
+      flickImg.classList.remove('is-fading');
+      if (state.imageFit === 'original') applyImageFit();
+    }, 50);
+  }
 
   state.flickSide = next;
-  flickLabel.textContent = 'Image ' + next;
-  flickLabel.setAttribute('data-side', next);
-  swapBtn.textContent = 'Swap to Image ' + (next === 'A' ? 'B' : 'A');
+  if (flickLabel) {
+    flickLabel.textContent = next === 'A' ? nounA() : nounB();
+    flickLabel.setAttribute('data-side', next);
+  }
+  if (swapBtn) {
+    swapBtn.textContent = 'Swap to ' + (next === 'A' ? nounB() : nounA());
+  }
 }
 
 function swapFlick() {
@@ -592,6 +673,309 @@ function wireSlider() {
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Video sync: play from 0 together; short clips hold end until all finish; loop
+// ---------------------------------------------------------------------------
+
+/**
+ * High-granularity timestamp: m:ss.mmm (milliseconds).
+ * @param {number} sec
+ */
+function formatTime(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const totalMs = Math.round(sec * 1000);
+  const m = Math.floor(totalMs / 60000);
+  const s = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
+  return (
+    m +
+    ':' +
+    String(s).padStart(2, '0') +
+    '.' +
+    String(ms).padStart(3, '0')
+  );
+}
+
+/** Scrubber range resolution (higher = finer seek steps). */
+const SCRUB_STEPS = 100000;
+
+function createVideoSyncController() {
+  /** @type {HTMLVideoElement[]} */
+  let videos = [];
+  let playing = false;
+  let raf = 0;
+  let scrubbing = false;
+
+  function list() {
+    return videos.filter((v) => v && v.isConnected);
+  }
+
+  function maxDuration() {
+    let t = 0;
+    list().forEach((v) => {
+      if (v.duration && isFinite(v.duration) && v.duration > t) t = v.duration;
+    });
+    return t;
+  }
+
+  function allFinished() {
+    const vs = list();
+    if (!vs.length) return true;
+    return vs.every((v) => {
+      if (!v.duration || !isFinite(v.duration) || v.duration <= 0) return true;
+      return v.ended || v.currentTime >= v.duration - 0.05;
+    });
+  }
+
+  function masterTime() {
+    // Use max currentTime among videos still before their end
+    let t = 0;
+    list().forEach((v) => {
+      if (!v.duration || !isFinite(v.duration)) return;
+      const ct = Math.min(v.currentTime, v.duration);
+      if (ct > t && ct < v.duration - 0.05) t = ct;
+      else if (v.ended || ct >= v.duration - 0.05) {
+        /* ended short clip — don't pull master past others */
+      } else if (ct > t) t = ct;
+    });
+    // Fallback: max of all currentTimes
+    if (t === 0) {
+      list().forEach((v) => {
+        if (v.currentTime > t) t = v.currentTime;
+      });
+    }
+    return t;
+  }
+
+  function updateTransportUi() {
+    const scrub = $('scrub');
+    const timeEl = $('transport-time');
+    const playBtn = $('btn-play');
+    const T = maxDuration();
+    const t = masterTime();
+    if (scrub && T > 0 && !scrubbing) {
+      scrub.max = String(SCRUB_STEPS);
+      scrub.value = String(Math.round((t / T) * SCRUB_STEPS));
+    }
+    if (timeEl) {
+      timeEl.textContent = formatTime(t) + ' / ' + formatTime(T);
+    }
+    if (playBtn) {
+      playBtn.textContent = playing ? 'Pause' : 'Play';
+    }
+  }
+
+  function applyMutePolicy() {
+    const vs = list();
+    vs.forEach((v, i) => {
+      // Primary audio = first registered (video A). Mute others unless mute-all.
+      if (state.videoMutedAll) {
+        v.muted = true;
+      } else {
+        v.muted = i !== 0;
+      }
+    });
+    const muteBtn = $('btn-mute');
+    if (muteBtn) muteBtn.textContent = state.videoMutedAll ? 'Unmute' : 'Mute';
+  }
+
+  function tick() {
+    if (!playing || scrubbing) {
+      updateTransportUi();
+      return;
+    }
+    const vs = list();
+    const T = maxDuration();
+
+    // Hold short clips at end
+    vs.forEach((v) => {
+      if (!v.duration || !isFinite(v.duration)) return;
+      if (v.currentTime >= v.duration - 0.04 && !v.paused) {
+        v.pause();
+        try {
+          v.currentTime = Math.max(0, v.duration - 0.01);
+        } catch (_) {}
+      }
+    });
+
+    // Light drift correction toward master among still-playing
+    const m = masterTime();
+    vs.forEach((v) => {
+      if (!v.duration || !isFinite(v.duration)) return;
+      if (v.ended || v.currentTime >= v.duration - 0.05) return;
+      if (v.paused && playing) {
+        // should still be playing if not finished
+        v.play().catch(() => {});
+      }
+      if (Math.abs(v.currentTime - m) > 0.12 && m < v.duration - 0.05) {
+        try {
+          v.currentTime = Math.min(m, v.duration - 0.01);
+        } catch (_) {}
+      }
+    });
+
+    if (allFinished()) {
+      // Restart all from 0 together
+      vs.forEach((v) => {
+        try {
+          v.currentTime = 0;
+        } catch (_) {}
+      });
+      vs.forEach((v) => {
+        v.play().catch(() => {});
+      });
+    }
+
+    updateTransportUi();
+    raf = window.requestAnimationFrame(tick);
+  }
+
+  function startTick() {
+    if (raf) window.cancelAnimationFrame(raf);
+    raf = window.requestAnimationFrame(tick);
+  }
+
+  return {
+    setVideos(arr) {
+      videos = (arr || []).filter(Boolean);
+      videos.forEach((v) => {
+        v.loop = false;
+        v.playsInline = true;
+        v.preload = 'auto';
+      });
+      applyMutePolicy();
+      updateTransportUi();
+    },
+    refreshDurations() {
+      updateTransportUi();
+    },
+    play() {
+      playing = true;
+      const vs = list();
+      // If all at end, restart from 0
+      if (allFinished()) {
+        vs.forEach((v) => {
+          try {
+            v.currentTime = 0;
+          } catch (_) {}
+        });
+      }
+      applyMutePolicy();
+      vs.forEach((v) => {
+        if (v.duration && isFinite(v.duration) && v.currentTime >= v.duration - 0.05) {
+          return; // hold until loop
+        }
+        v.play().catch(() => {});
+      });
+      startTick();
+      updateTransportUi();
+    },
+    pause() {
+      playing = false;
+      list().forEach((v) => v.pause());
+      if (raf) window.cancelAnimationFrame(raf);
+      raf = 0;
+      updateTransportUi();
+    },
+    togglePlay() {
+      if (playing) this.pause();
+      else this.play();
+    },
+    isPlaying() {
+      return playing;
+    },
+    seek(t) {
+      const T = maxDuration();
+      t = Math.max(0, Math.min(t, T || t));
+      list().forEach((v) => {
+        const d = v.duration && isFinite(v.duration) ? v.duration : t;
+        const target = Math.min(t, Math.max(0, d - 0.01));
+        try {
+          v.currentTime = target;
+        } catch (_) {}
+        if (playing) {
+          if (t >= d - 0.05) v.pause();
+          else v.play().catch(() => {});
+        }
+      });
+      updateTransportUi();
+    },
+    seekNormalized(n) {
+      // n 0..SCRUB_STEPS
+      const T = maxDuration();
+      this.seek((n / SCRUB_STEPS) * (T || 0));
+    },
+    setScrubbing(on) {
+      scrubbing = !!on;
+      if (!on && playing) startTick();
+    },
+    applyMutePolicy,
+    maxDuration,
+    masterTime,
+    updateTransportUi,
+  };
+}
+
+window.__fasVideoSync = createVideoSyncController();
+
+function setMediaVisibility(isVideo) {
+  document.querySelectorAll('.fas-media-img').forEach((el) => {
+    el.hidden = !!isVideo;
+  });
+  document.querySelectorAll('.fas-media-video').forEach((el) => {
+    // individual visibility refined later for flick A/B
+    el.hidden = !isVideo;
+  });
+  const app = $('app');
+  if (app) app.classList.toggle('is-video-session', !!isVideo);
+}
+
+function updateVideoLayerVisibility() {
+  if (state.mediaKind !== 'video') return;
+  const side = state.flickSide;
+  const vidA = $('flick-vid-a');
+  const vidB = $('flick-vid-b');
+  const flickImg = $('flick-img');
+  if (flickImg) flickImg.hidden = true;
+  if (vidA) vidA.hidden = side !== 'A';
+  if (vidB) vidB.hidden = side !== 'B';
+
+  // Source video visible when source pane shown
+  const sourceVid = $('source-vid');
+  const sourceImg = $('source-img');
+  if (sourceImg) sourceImg.hidden = true;
+  if (sourceVid) sourceVid.hidden = !state.imageSource;
+
+  // Side + slider: both videos visible in their layers
+  ['side-vid-a', 'side-vid-b', 'slider-vid-a', 'slider-vid-b'].forEach((id) => {
+    const el = $(id);
+    if (el) el.hidden = false;
+  });
+  ['side-img-a', 'side-img-b', 'slider-img-a', 'slider-img-b', 'source-img'].forEach(
+    (id) => {
+      const el = $(id);
+      if (el) el.hidden = true;
+    }
+  );
+}
+
+function wireVideoSrc(videoEl, item, label) {
+  if (!videoEl || !item || !item.src) return;
+  videoEl.src = item.src;
+  videoEl.setAttribute('aria-label', label || 'Video');
+  videoEl.addEventListener(
+    'error',
+    () => {
+      setStatus(
+        (label || 'Video') +
+          ' could not be loaded. The file may be protected or not transferable from this page.'
+      );
+    },
+    { once: true }
+  );
+}
+
 /**
  * Show/hide left source column in Flick mode and wire source image.
  */
@@ -599,27 +983,48 @@ function applySourceLayout() {
   const root = $('flick-root');
   const sourcePane = $('flick-source');
   const sourceImg = $('source-img');
+  const sourceVid = $('source-vid');
   const btnSource = $('btn-source');
+  const sourceLabel = $('source-label');
   const hasSource = !!(state.imageSource && state.imageSource.src);
 
   if (root) root.classList.toggle('has-source', hasSource);
   if (sourcePane) sourcePane.hidden = !hasSource;
 
-  if (sourceImg && hasSource) {
-    sourceImg.src = state.imageSource.src;
-    sourceImg.alt = 'Source image';
-    attachImageFallback(sourceImg, 'Source image');
+  if (hasSource) {
+    if (state.mediaKind === 'video') {
+      if (sourceImg) sourceImg.hidden = true;
+      if (sourceVid) {
+        sourceVid.hidden = false;
+        wireVideoSrc(sourceVid, state.imageSource, nounSource());
+      }
+    } else {
+      if (sourceVid) sourceVid.hidden = true;
+      if (sourceImg) {
+        sourceImg.hidden = false;
+        sourceImg.src = state.imageSource.src;
+        sourceImg.alt = nounSource();
+        attachImageFallback(sourceImg, nounSource());
+      }
+    }
   }
+
+  if (sourceLabel) sourceLabel.textContent = nounSource();
 
   if (btnSource) {
-    btnSource.textContent = hasSource ? 'Change source image' : 'Add a source image';
+    const noun = state.mediaKind === 'video' ? 'source video' : 'source image';
+    btnSource.textContent = hasSource
+      ? 'Change ' + noun
+      : 'Add a ' + noun;
   }
 
-  // Source AR badge
   const sourceAr = $('source-ar');
   if (sourceAr) {
     if (hasSource) {
-      const dims = dimsForImageData(state.imageSource, sourceImg);
+      const dims = dimsForImageData(
+        state.imageSource,
+        state.mediaKind === 'video' ? sourceVid : sourceImg
+      );
       const ar = nearestAspectRatio(dims.w, dims.h);
       sourceAr.textContent = ar ? 'AR: ' + ar.label : 'AR: -';
       sourceAr.hidden = false;
@@ -633,81 +1038,179 @@ function loadImages(comparison) {
   state.imageA = comparison.imageA;
   state.imageB = comparison.imageB;
   state.imageSource = comparison.imageSource || null;
+  state.mediaKind =
+    comparison.mediaKind ||
+    (comparison.imageA && comparison.imageA.kind) ||
+    'image';
 
-  const flickImg = $('flick-img');
-  const imgA = $('slider-img-a');
-  const imgB = $('slider-img-b');
-  const sideA = $('side-img-a');
-  const sideB = $('side-img-b');
-  const sourceImg = $('source-img');
+  const isVideo = state.mediaKind === 'video';
+  setMediaVisibility(isVideo);
 
-  flickImg.src = state.imageA.src;
-  imgA.src = state.imageA.src;
-  imgB.src = state.imageB.src;
-  if (sideA) sideA.src = state.imageA.src;
-  if (sideB) sideB.src = state.imageB.src;
+  if (!isVideo) {
+    const flickImg = $('flick-img');
+    const imgA = $('slider-img-a');
+    const imgB = $('slider-img-b');
+    const sideA = $('side-img-a');
+    const sideB = $('side-img-b');
 
-  attachImageFallback(flickImg, 'Image A');
-  attachImageFallback(imgA, 'Image A');
-  attachImageFallback(imgB, 'Image B');
-  if (sideA) attachImageFallback(sideA, 'Image A');
-  if (sideB) attachImageFallback(sideB, 'Image B');
+    if (flickImg) {
+      flickImg.hidden = false;
+      flickImg.src = state.imageA.src;
+      attachImageFallback(flickImg, nounA());
+    }
+    ['flick-vid-a', 'flick-vid-b', 'source-vid', 'side-vid-a', 'side-vid-b', 'slider-vid-a', 'slider-vid-b'].forEach(
+      (id) => {
+        const el = $(id);
+        if (el) {
+          el.hidden = true;
+          el.removeAttribute('src');
+        }
+      }
+    );
+
+    if (imgA) {
+      imgA.hidden = false;
+      imgA.src = state.imageA.src;
+      attachImageFallback(imgA, nounA());
+    }
+    if (imgB) {
+      imgB.hidden = false;
+      imgB.src = state.imageB.src;
+      attachImageFallback(imgB, nounB());
+    }
+    if (sideA) {
+      sideA.hidden = false;
+      sideA.src = state.imageA.src;
+      attachImageFallback(sideA, nounA());
+    }
+    if (sideB) {
+      sideB.hidden = false;
+      sideB.src = state.imageB.src;
+      attachImageFallback(sideB, nounB());
+    }
+  } else {
+    // Video session: load all players, register with sync controller
+    const vA = $('flick-vid-a');
+    const vB = $('flick-vid-b');
+    const sideVA = $('side-vid-a');
+    const sideVB = $('side-vid-b');
+    const sVA = $('slider-vid-a');
+    const sVB = $('slider-vid-b');
+    const srcV = $('source-vid');
+
+    wireVideoSrc(vA, state.imageA, nounA());
+    wireVideoSrc(vB, state.imageB, nounB());
+    wireVideoSrc(sideVA, state.imageA, nounA());
+    wireVideoSrc(sideVB, state.imageB, nounB());
+    wireVideoSrc(sVA, state.imageA, nounA());
+    wireVideoSrc(sVB, state.imageB, nounB());
+    if (state.imageSource) wireVideoSrc(srcV, state.imageSource, nounSource());
+
+    // Sync controller drives the "primary" set: prefer visible-mode elements.
+    // Register A first (audio primary), then B, then source.
+    // Use side videos as canonical (always both present); flick/slider share same src.
+    // Actually each element is independent decoder — register one set to save resources.
+    // Use flick-vid-a/b + source as master; on mode change we need all playing...
+    // Register ALL non-null videos that are part of comparison so every mode stays in sync.
+    const syncList = [vA, vB];
+    if (state.imageSource && srcV) syncList.push(srcV);
+    // Also side + slider so switching modes doesn't desync
+    if (sideVA) syncList.push(sideVA);
+    if (sideVB) syncList.push(sideVB);
+    if (sVA) syncList.push(sVA);
+    if (sVB) syncList.push(sVB);
+
+    window.__fasVideoSync.setVideos(syncList);
+    updateVideoLayerVisibility();
+
+    // Wait for metadata then enable transport
+    let pending = syncList.filter(Boolean).length;
+    const onMeta = () => {
+      pending -= 1;
+      if (state.imageA && vA && vA.videoWidth) {
+        state.imageA.naturalWidth = vA.videoWidth;
+        state.imageA.naturalHeight = vA.videoHeight;
+        state.imageA.duration = vA.duration;
+      }
+      if (state.imageB && vB && vB.videoWidth) {
+        state.imageB.naturalWidth = vB.videoWidth;
+        state.imageB.naturalHeight = vB.videoHeight;
+        state.imageB.duration = vB.duration;
+      }
+      window.__fasVideoSync.refreshDurations();
+      applyImageFit();
+      updateAspectRatioUi();
+      if (pending <= 0) setStatus(null);
+    };
+    syncList.filter(Boolean).forEach((v) => {
+      if (v.readyState >= 1) onMeta();
+      else {
+        v.addEventListener('loadedmetadata', onMeta, { once: true });
+        v.addEventListener('error', onMeta, { once: true });
+      }
+    });
+  }
 
   applySourceLayout();
-  if (sourceImg && state.imageSource) {
-    // Already set in applySourceLayout; ensure fit-img click wired once via wireUi
-  }
 
   state.flickSide = 'A';
   state.imageFit = 'fill';
-  $('flick-label').textContent = 'Image A';
-  $('flick-label').setAttribute('data-side', 'A');
-  $('btn-swap').textContent = 'Swap to Image B';
+  const flickLabel = $('flick-label');
+  if (flickLabel) {
+    flickLabel.textContent = nounA();
+    flickLabel.setAttribute('data-side', 'A');
+  }
+  const swapBtn = $('btn-swap');
+  if (swapBtn) swapBtn.textContent = 'Swap to ' + nounB();
+
+  const sideLa = $('side-label-a');
+  const sideLb = $('side-label-b');
+  if (sideLa) sideLa.textContent = nounA();
+  if (sideLb) sideLb.textContent = nounB();
+
   applySliderPct(50);
   setMode('flick');
 
-  // Re-apply fit + AR once natural dimensions are known
-  const fitImgs = [
-    $('flick-img'),
-    $('source-img'),
-    $('side-img-a'),
-    $('side-img-b'),
-    $('slider-img-a'),
-    $('slider-img-b'),
-  ].filter(Boolean);
-  let pending = fitImgs.length;
-  const onReady = () => {
-    pending -= 1;
-    // Refresh dims from loaded imgs into state when available
-    if (state.imageA && $('flick-img') && $('flick-img').naturalWidth) {
-      state.imageA.naturalWidth = $('flick-img').naturalWidth;
-      state.imageA.naturalHeight = $('flick-img').naturalHeight;
-    }
-    // side/slider A may have more accurate dims for A
-    const imgA = $('side-img-a') || $('slider-img-a');
-    if (state.imageA && imgA && imgA.naturalWidth) {
-      state.imageA.naturalWidth = imgA.naturalWidth;
-      state.imageA.naturalHeight = imgA.naturalHeight;
-    }
-    const imgB = $('side-img-b') || $('slider-img-b');
-    if (state.imageB && imgB && imgB.naturalWidth) {
-      state.imageB.naturalWidth = imgB.naturalWidth;
-      state.imageB.naturalHeight = imgB.naturalHeight;
-    }
+  if (!isVideo) {
+    const fitImgs = [
+      $('flick-img'),
+      $('source-img'),
+      $('side-img-a'),
+      $('side-img-b'),
+      $('slider-img-a'),
+      $('slider-img-b'),
+    ].filter(Boolean);
+    let pending = fitImgs.length;
+    const onReady = () => {
+      pending -= 1;
+      const imgA = $('side-img-a') || $('slider-img-a') || $('flick-img');
+      if (state.imageA && imgA && imgA.naturalWidth) {
+        state.imageA.naturalWidth = imgA.naturalWidth;
+        state.imageA.naturalHeight = imgA.naturalHeight;
+      }
+      const imgB = $('side-img-b') || $('slider-img-b');
+      if (state.imageB && imgB && imgB.naturalWidth) {
+        state.imageB.naturalWidth = imgB.naturalWidth;
+        state.imageB.naturalHeight = imgB.naturalHeight;
+      }
+      applyImageFit();
+      updateAspectRatioUi();
+    };
+    fitImgs.forEach((img) => {
+      if (img.complete && img.naturalWidth) onReady();
+      else {
+        img.addEventListener('load', onReady, { once: true });
+        img.addEventListener('error', onReady, { once: true });
+      }
+    });
     applyImageFit();
     updateAspectRatioUi();
-  };
-  fitImgs.forEach((img) => {
-    if (img.complete && img.naturalWidth) onReady();
-    else {
-      img.addEventListener('load', onReady, { once: true });
-      img.addEventListener('error', onReady, { once: true });
-    }
-  });
-
-  applyImageFit();
-  updateAspectRatioUi();
-  setStatus(null);
+    setStatus(null);
+  } else {
+    applyImageFit();
+    updateAspectRatioUi();
+    setStatus('Loading videos…');
+  }
 }
 
 function wireUi() {
@@ -737,9 +1240,39 @@ function wireUi() {
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode')));
   });
 
-  // Click image to toggle fill frame ↔ original size (Flick + Side by Side)
-  document.querySelectorAll('.fas-fit-img').forEach((img) => {
-    img.addEventListener('click', toggleImageFit);
+  // Click media to toggle fill frame ↔ original size (Flick + Side by Side)
+  document.querySelectorAll('.fas-fit-img').forEach((el) => {
+    el.addEventListener('click', toggleImageFit);
+  });
+
+  const btnPlay = $('btn-play');
+  if (btnPlay) {
+    btnPlay.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.__fasVideoSync.togglePlay();
+    });
+  }
+  const btnMute = $('btn-mute');
+  if (btnMute) {
+    btnMute.addEventListener('click', (e) => {
+      e.preventDefault();
+      state.videoMutedAll = !state.videoMutedAll;
+      window.__fasVideoSync.applyMutePolicy();
+    });
+  }
+  const scrub = $('scrub');
+  if (scrub) {
+    scrub.addEventListener('pointerdown', () => window.__fasVideoSync.setScrubbing(true));
+    scrub.addEventListener('pointerup', () => window.__fasVideoSync.setScrubbing(false));
+    scrub.addEventListener('input', () => {
+      window.__fasVideoSync.seekNormalized(Number(scrub.value) || 0);
+    });
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state.mediaKind === 'video') {
+      window.__fasVideoSync.pause();
+    }
   });
 
   const proceedBtn = $('ar-warning-proceed');
@@ -780,6 +1313,12 @@ function wireUi() {
       return;
     }
 
+    if (state.mediaKind === 'video' && (e.key === ' ' || e.code === 'Space')) {
+      e.preventDefault();
+      window.__fasVideoSync.togglePlay();
+      return;
+    }
+
     if (e.key === 'Escape') {
       e.preventDefault();
       // If full screen, first exit to maximised/normal rather than closing.
@@ -794,7 +1333,7 @@ function wireUi() {
 
 function init() {
   wireUi();
-  setStatus('Loading images…');
+  setStatus('Loading…');
 
   chrome.runtime.sendMessage({ type: FAS_GET_COMPARISON }, (response) => {
     if (chrome.runtime.lastError) {
@@ -802,14 +1341,14 @@ function init() {
       return;
     }
     if (!response || !response.ok || !response.comparison) {
-      setStatus('No images to compare. Close this window and select two images again.');
+      setStatus('Nothing to compare. Close this window and select two images or videos again.');
       return;
     }
     try {
       loadImages(response.comparison);
     } catch (err) {
       console.error(err);
-      setStatus('Failed to display images.');
+      setStatus('Failed to display media.');
     }
   });
 }

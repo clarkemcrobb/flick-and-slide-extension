@@ -246,3 +246,12 @@ Both images use `object-fit: contain` inside the same container so rendered pixe
 | Fit hint (original) | Showing original size - click an image to fill the frame |
 | Close footer | Close tool |
 | AR badge | AR: 16:9 (example) |
+
+---
+
+## v3.0 video notes
+
+- Page selection: `img.fas-selectable` and `video.fas-selectable` (same ring/badge system).
+- Comparison: `.fas-media-img` / `.fas-media-video` toggled by session kind; `.fas-app.is-video-session`.
+- Transport: `.fas-transport`, `#btn-play`, `#btn-mute`, `#scrub`, `#transport-time` (m:ss.mmm).
+- Banner error: `.fas-banner__error` for mixed media / non-transferable sources.

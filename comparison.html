@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Flick Between Images – A vs B</title>
+    <title>Flick and Slide</title>
     <link rel="stylesheet" href="comparison.css" />
   </head>
   <body>
@@ -47,6 +47,7 @@
               role="tab"
               aria-selected="true"
               data-mode="flick"
+              id="tab-flick"
             >
               Flick Between Images
             </button>
@@ -56,6 +57,7 @@
               role="tab"
               aria-selected="false"
               data-mode="slider"
+              id="tab-slider"
             >
               Comparison Slider
             </button>
@@ -65,6 +67,7 @@
               role="tab"
               aria-selected="false"
               data-mode="side"
+              id="tab-side"
             >
               Side by Side
             </button>
@@ -75,31 +78,54 @@
       <main class="fas-panel__body" id="body">
         <div class="fas-mode-pane is-visible" data-pane="flick" id="pane-flick">
           <div class="fas-flick" id="flick-root">
-            <!-- Optional persistent source (left) when a source image is set -->
             <div class="fas-flick__source" id="flick-source" hidden>
               <div class="fas-flick__stage fas-flick__stage--source">
                 <div class="fas-ar-badge" id="source-ar" aria-hidden="true"></div>
                 <img
-                  class="fas-flick__img fas-fit-img"
+                  class="fas-flick__img fas-fit-img fas-media-img"
                   id="source-img"
-                  alt="Source image"
+                  alt="Source"
                   draggable="false"
                   title="Click to toggle fill the frame and original size"
                 />
+                <video
+                  class="fas-flick__img fas-fit-img fas-media-video"
+                  id="source-vid"
+                  playsinline
+                  preload="auto"
+                  title="Click to toggle fill the frame and original size"
+                  hidden
+                ></video>
               </div>
-              <div class="fas-flick__label fas-flick__label--source">Source image</div>
+              <div class="fas-flick__label fas-flick__label--source" id="source-label">Source image</div>
             </div>
 
             <div class="fas-flick__main" id="flick-main">
               <div class="fas-flick__stage" id="flick-stage">
                 <div class="fas-ar-badge fas-ar-badge--stack" id="flick-ar" aria-hidden="true"></div>
                 <img
-                  class="fas-flick__img fas-fit-img"
+                  class="fas-flick__img fas-fit-img fas-media-img"
                   id="flick-img"
                   alt="Image A"
                   draggable="false"
                   title="Click to toggle fill the frame and original size"
                 />
+                <video
+                  class="fas-flick__img fas-fit-img fas-media-video"
+                  id="flick-vid-a"
+                  playsinline
+                  preload="auto"
+                  title="Click to toggle fill the frame and original size"
+                  hidden
+                ></video>
+                <video
+                  class="fas-flick__img fas-fit-img fas-media-video"
+                  id="flick-vid-b"
+                  playsinline
+                  preload="auto"
+                  title="Click to toggle fill the frame and original size"
+                  hidden
+                ></video>
               </div>
               <div class="fas-flick__controls">
                 <div class="fas-flick__label" id="flick-label" data-side="A">Image A</div>
@@ -130,17 +156,19 @@
             class="fas-slider"
             id="slider"
             role="slider"
-            aria-label="Image comparison slider"
+            aria-label="Comparison slider"
             aria-valuemin="0"
             aria-valuemax="100"
             aria-valuenow="50"
             tabindex="0"
           >
             <div class="fas-slider__layer fas-slider__layer--b">
-              <img id="slider-img-b" alt="Image B" draggable="false" />
+              <img id="slider-img-b" class="fas-media-img" alt="Image B" draggable="false" />
+              <video id="slider-vid-b" class="fas-media-video" playsinline preload="auto" hidden></video>
             </div>
             <div class="fas-slider__layer fas-slider__layer--a">
-              <img id="slider-img-a" alt="Image A" draggable="false" />
+              <img id="slider-img-a" class="fas-media-img" alt="Image A" draggable="false" />
+              <video id="slider-vid-a" class="fas-media-video" playsinline preload="auto" hidden></video>
             </div>
             <div class="fas-slider__handle" id="slider-handle" aria-hidden="true">
               <div class="fas-slider__line"></div>
@@ -154,36 +182,51 @@
               <div class="fas-side__stage">
                 <div class="fas-ar-badge" id="side-ar-a" aria-hidden="true"></div>
                 <img
-                  class="fas-fit-img"
+                  class="fas-fit-img fas-media-img"
                   id="side-img-a"
                   alt="Image A"
                   draggable="false"
                   title="Click to toggle fill the frame and original size"
                 />
+                <video
+                  class="fas-fit-img fas-media-video"
+                  id="side-vid-a"
+                  playsinline
+                  preload="auto"
+                  title="Click to toggle fill the frame and original size"
+                  hidden
+                ></video>
               </div>
-              <div class="fas-side__label fas-side__label--a">Image A</div>
+              <div class="fas-side__label fas-side__label--a" id="side-label-a">Image A</div>
             </div>
             <div class="fas-side__divider" aria-hidden="true"></div>
             <div class="fas-side__panel fas-side__panel--b">
               <div class="fas-side__stage">
                 <div class="fas-ar-badge" id="side-ar-b" aria-hidden="true"></div>
                 <img
-                  class="fas-fit-img"
+                  class="fas-fit-img fas-media-img"
                   id="side-img-b"
                   alt="Image B"
                   draggable="false"
                   title="Click to toggle fill the frame and original size"
                 />
+                <video
+                  class="fas-fit-img fas-media-video"
+                  id="side-vid-b"
+                  playsinline
+                  preload="auto"
+                  title="Click to toggle fill the frame and original size"
+                  hidden
+                ></video>
               </div>
-              <div class="fas-side__label fas-side__label--b">Image B</div>
+              <div class="fas-side__label fas-side__label--b" id="side-label-b">Image B</div>
             </div>
           </div>
         </div>
 
-        <div class="fas-status" id="status" hidden>Loading images…</div>
+        <div class="fas-status" id="status" hidden>Loading…</div>
       </main>
 
-      <!-- Full-screen AR mismatch alert (Slider mode) -->
       <div
         class="fas-ar-modal"
         id="ar-warning-modal"
@@ -205,6 +248,25 @@
 
       <footer class="fas-panel__footer">
         <div class="fas-panel__footer-left">
+          <div class="fas-transport" id="transport" hidden>
+            <button type="button" class="fas-btn fas-transport__play" id="btn-play" title="Play / Pause">
+              Play
+            </button>
+            <button type="button" class="fas-btn fas-transport__mute" id="btn-mute" title="Mute all">
+              Mute
+            </button>
+            <input
+              type="range"
+              class="fas-transport__scrub"
+              id="scrub"
+              min="0"
+              max="100000"
+              value="0"
+              step="1"
+              aria-label="Seek"
+            />
+            <span class="fas-transport__time" id="transport-time">0:00.000 / 0:00.000</span>
+          </div>
           <div class="fas-panel__footer-hint" id="fit-hint">
             Showing the image filling the frame - click an image to return to original size
           </div>

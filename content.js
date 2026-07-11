@@ -93,9 +93,12 @@
     return el;
   }
 
-  function resolveSrc(img) {
-    if (!img) return '';
-    return img.currentSrc || img.src || img.getAttribute('src') || '';
+  function resolveSrc(el) {
+    if (!el) return '';
+    if (el.nodeName === 'VIDEO') {
+      return el.currentSrc || el.src || el.getAttribute('src') || '';
+    }
+    return el.currentSrc || el.src || el.getAttribute('src') || '';
   }
 
   function isTypingTarget(target) {
@@ -276,8 +279,8 @@
     });
 
     const labelText = state.selectingSource
-      ? 'Select a source image (A and B stay selected)'
-      : 'Select the two images to compare';
+      ? 'Select a source image or video (A and B stay selected)'
+      : 'Select the two images or videos to compare';
 
     const label = $('span', 'fas-banner__text', {
       text: labelText,
@@ -356,16 +359,17 @@
   }
 
   function scanAndMarkImages() {
-    document.querySelectorAll('img').forEach((img) => markSelectable(img));
+    document.querySelectorAll('img, video').forEach((el) => markSelectable(el));
   }
 
-  function markSelectable(img) {
-    if (!img || img.nodeName !== 'IMG') return;
-    if (img.closest && img.closest('.fas-banner, .fas-fab')) return;
-    if (state.selectableImgs.has(img)) return;
+  function markSelectable(el) {
+    if (!el || (el.nodeName !== 'IMG' && el.nodeName !== 'VIDEO')) return;
+    if (el.closest && el.closest('.fas-banner, .fas-fab')) return;
+    if (state.selectableImgs.has(el)) return;
 
-    img.classList.add('fas-selectable');
-    state.selectableImgs.add(img);
+    el.classList.add('fas-selectable');
+    state.selectableImgs.add(el);
+    const img = el; // keep local name for rebinding below
 
     // Re-bind chrome only for the slot that owns this exact element
     if (state.imageA && state.imageA.el === img) {
@@ -403,9 +407,9 @@
       for (const m of mutations) {
         m.addedNodes.forEach((node) => {
           if (node.nodeType !== 1) return;
-          if (node.nodeName === 'IMG') markSelectable(node);
+          if (node.nodeName === 'IMG' || node.nodeName === 'VIDEO') markSelectable(node);
           if (node.querySelectorAll) {
-            node.querySelectorAll('img').forEach((img) => markSelectable(img));
+            node.querySelectorAll('img, video').forEach((m) => markSelectable(m));
           }
         });
       }
@@ -536,22 +540,90 @@
   // Click selection (strict: max one A, one B, never the same visual twice)
   // ---------------------------------------------------------------------------
 
-  function snapshotImage(img) {
+  function mediaKindOf(el) {
+    if (!el) return null;
+    if (el.nodeName === 'VIDEO') return 'video';
+    if (el.nodeName === 'IMG') return 'image';
+    return null;
+  }
+
+  function isTransferableSrc(src) {
+    if (!src || typeof src !== 'string') return false;
+    const s = src.trim();
+    if (!s) return false;
+    if (s.startsWith('blob:')) return false;
+    if (s.startsWith('mediasource:')) return false;
+    if (s.startsWith('mse:')) return false;
+    return true;
+  }
+
+  function snapshotImage(el) {
+    const kind = mediaKindOf(el) || 'image';
+    const src = resolveSrc(el);
+    let naturalWidth = 0;
+    let naturalHeight = 0;
+    let duration = 0;
+    if (kind === 'video') {
+      naturalWidth = el.videoWidth || el.clientWidth || 0;
+      naturalHeight = el.videoHeight || el.clientHeight || 0;
+      duration = el.duration && isFinite(el.duration) ? el.duration : 0;
+    } else {
+      naturalWidth = el.naturalWidth || el.width || 0;
+      naturalHeight = el.naturalHeight || el.height || 0;
+    }
     return {
-      el: img,
-      src: resolveSrc(img),
-      naturalWidth: img.naturalWidth || img.width || 0,
-      naturalHeight: img.naturalHeight || img.height || 0,
+      el: el,
+      kind: kind,
+      src: src,
+      naturalWidth: naturalWidth,
+      naturalHeight: naturalHeight,
+      duration: duration,
     };
   }
 
   /** Serializable payload for the comparison window (no DOM refs). */
   function toPayloadImage(data) {
     return {
+      kind: data.kind || 'image',
       src: data.src,
       naturalWidth: data.naturalWidth,
       naturalHeight: data.naturalHeight,
+      duration: data.duration || 0,
     };
+  }
+
+  function showMediaError(message) {
+    // Temporary status on the banner
+    if (!state.banner) return;
+    let err = state.banner.querySelector('.fas-banner__error');
+    if (!err) {
+      err = document.createElement('span');
+      err.className = 'fas-banner__error';
+      state.banner.insertBefore(err, state.banner.lastChild);
+    }
+    err.textContent = message;
+    err.hidden = false;
+    window.clearTimeout(showMediaError._t);
+    showMediaError._t = window.setTimeout(() => {
+      if (err) err.hidden = true;
+    }, 4500);
+  }
+
+  function sessionKind() {
+    if (state.imageA && state.imageA.kind) return state.imageA.kind;
+    return null;
+  }
+
+  function assertSameKind(el, forSlot) {
+    const kind = mediaKindOf(el);
+    const sk = sessionKind();
+    if (sk && kind && kind !== sk) {
+      showMediaError(
+        'Select two images or two videos — you cannot mix images and videos.'
+      );
+      return false;
+    }
+    return true;
   }
 
   function imageArea(img) {
@@ -574,11 +646,11 @@
    * Whether an img is large enough / visible enough to select.
    * Filters out icons, tracking pixels, and hidden nodes.
    */
-  function isValidSelectable(img) {
-    if (!img || img.nodeName !== 'IMG') return false;
-    if (!img.isConnected) return false;
-    if (isOurUi(img)) return false;
-    const r = img.getBoundingClientRect();
+  function isValidSelectable(el) {
+    if (!el || (el.nodeName !== 'IMG' && el.nodeName !== 'VIDEO')) return false;
+    if (!el.isConnected) return false;
+    if (isOurUi(el)) return false;
+    const r = el.getBoundingClientRect();
     if (r.width < 24 || r.height < 24) return false;
     if (r.width * r.height < MIN_SELECT_AREA) return false;
     // Fully off-screen
@@ -586,7 +658,7 @@
       return false;
     }
     try {
-      const style = window.getComputedStyle(img);
+      const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
         return false;
       }
@@ -787,8 +859,15 @@
 
     // Source-pick mode: A and B stay selected; assign Source and reopen comparison
     if (state.selectingSource) {
-      // Source must be a third image (not the same visual as A or B)
       if (slotMatchesImg(state.imageA, img) || slotMatchesImg(state.imageB, img)) {
+        return;
+      }
+      if (!assertSameKind(img, 'S')) return;
+      const srcSnap = snapshotImage(img);
+      if (!isTransferableSrc(srcSnap.src)) {
+        showMediaError(
+          'This media cannot be opened in the comparison window (unsupported or protected source).'
+        );
         return;
       }
       assignSource(img);
@@ -819,10 +898,24 @@
     }
 
     if (!state.imageA) {
+      const snap = snapshotImage(img);
+      if (!isTransferableSrc(snap.src)) {
+        showMediaError(
+          'This media cannot be opened in the comparison window (unsupported or protected source).'
+        );
+        return;
+      }
       assignSlot('A', img);
     } else if (!state.imageB) {
-      // Final guard: never assign B if it is the same visual as A
       if (slotMatchesImg(state.imageA, img)) {
+        return;
+      }
+      if (!assertSameKind(img, 'B')) return;
+      const snap = snapshotImage(img);
+      if (!isTransferableSrc(snap.src)) {
+        showMediaError(
+          'This media cannot be opened in the comparison window (unsupported or protected source).'
+        );
         return;
       }
       assignSlot('B', img);
@@ -877,16 +970,20 @@
       for (let i = 0; i < stack.length; i++) {
         const el = stack[i];
         if (isOurUi(el)) continue;
-        if (el.nodeName === 'IMG' && state.selectableImgs.has(el) && isValidSelectable(el)) {
+        if (
+          (el.nodeName === 'IMG' || el.nodeName === 'VIDEO') &&
+          state.selectableImgs.has(el) &&
+          isValidSelectable(el)
+        ) {
           candidates.push(el);
         }
-        // Also consider imgs inside a clicked container near the top of the stack
+        // Also consider media inside a clicked container near the top of the stack
         if (candidates.length === 0 && el.querySelectorAll && i < 3) {
-          el.querySelectorAll('img').forEach((img) => {
-            if (state.selectableImgs.has(img) && isValidSelectable(img)) {
-              const r = img.getBoundingClientRect();
+          el.querySelectorAll('img, video').forEach((media) => {
+            if (state.selectableImgs.has(media) && isValidSelectable(media)) {
+              const r = media.getBoundingClientRect();
               if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-                candidates.push(img);
+                candidates.push(media);
               }
             }
           });
@@ -900,7 +997,11 @@
       // Fallback: walk up from event target
       let el = e.target;
       for (let i = 0; i < 6 && el; i++) {
-        if (el.nodeName === 'IMG' && state.selectableImgs.has(el) && isValidSelectable(el)) {
+        if (
+          (el.nodeName === 'IMG' || el.nodeName === 'VIDEO') &&
+          state.selectableImgs.has(el) &&
+          isValidSelectable(el)
+        ) {
           candidates.push(el);
           break;
         }
@@ -935,7 +1036,7 @@
       if (!state.fab) {
         const fab = $('button', 'fas-fab', {
           type: 'button',
-          text: 'Compare Images',
+          text: 'Compare',
         });
         fab.addEventListener('click', (e) => {
           e.preventDefault();
@@ -978,6 +1079,7 @@
       {
         type: FAS_OPEN_COMPARISON,
         payload: {
+          mediaKind: state.imageA.kind || 'image',
           imageA: toPayloadImage(state.imageA),
           imageB: toPayloadImage(state.imageB),
           imageSource: state.imageSource

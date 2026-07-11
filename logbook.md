@@ -1,37 +1,31 @@
 # Logbook
 
+## v3.0.0 – Video comparison (2026-07-11)
+
+Major release: compare **videos** with the same workflows as images.
+
+- Select two HTML5 videos (or two images); mixed pairs rejected with a clear message
+- Flick, Side by Side, Slider, and optional source media for video sessions
+- Synced playback from 0:00; shorter clips hold at end until the longest finishes, then joint loop
+- Transport bar: play/pause, mute, fine scrubber, millisecond timestamps
+- Transferable URL sources only (blob/protected media blocked with a message)
+- Install package remains runtime-only zip on GitHub Releases
+
 ## v2.0.0 – Major image comparison release (2026-07-11)
 
-Published image-focused feature set as 2.0.0. Video comparison not included yet.
+Published image-focused feature set as 2.0.0.
 
 ### Distribution
 - GitHub Release ships **`flick-and-slide.zip`** with runtime files only (no README/logbook/stylesheet).
 - Full repo still has docs for the project page; install instructions point at the release zip.
 
 ### Comparison window
-- Dedicated OS window (not in-page overlay): Small / Medium / Maximised / Full Screen
-- Close via ×, Esc, footer Close tool, or OS/Chrome close fully exits the tool
+- Dedicated OS window: Small / Medium / Maximised / Full Screen
+- Close fully exits the tool
 - Modes: Flick, Comparison Slider, Side by Side
-
-### Flick
-- Swap button + left/right keys (both keys toggle A ↔ B)
-- Optional **source image**: left pane fixed; A/B flick on the right
-- Add / change source without losing A/B selection
-
-### Selection
-- Strict one A / one B; no double-select same visual
-- Fixed border rings + A/B/S badges glued to images
-- Banner with Close tool; source-pick banner with Cancel
-
-### Display
-- Default fill-frame; click to toggle original size (Flick / Side by Side)
-- AR corner badges (nearest common ratio labels only — no image distortion)
-- Slider AR mismatch: centre red modal → Proceed anyway → compact red bar (≥ 8%)
-
-### Other
-- Right-click toolbar icon → Check for updates… (GitHub version compare; manual update for unpacked)
-- Extension-context-invalidated safety after Reload
-- Files: comparison.html/js/css, update-check.html/js
+- Optional source image in Flick
+- Stricter selection, fill/original fit, AR badges, slider AR warning
+- Check for updates via toolbar context menu
 
 ## v1.0.1 – README install guide
 
