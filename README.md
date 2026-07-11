@@ -44,7 +44,7 @@ Unpacked extensions do not update automatically; the update checker only tells y
 ## How to use
 
 1. Open a normal webpage that has images.
-2. Click the **Flick and Slide** icon.
+2. Click the **Flick and Slide** icon in your extensions toolbar dropdown, or pin it to your toolbar for one-click activation.
 3. Click the first image (A), then the second (B).
 4. Click **Compare Images**, or press **C**.
 5. Choose a mode: **Flick Between Images**, **Comparison Slider**, or **Side by Side**.
