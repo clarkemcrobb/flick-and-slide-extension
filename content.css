@@ -24,6 +24,8 @@
   --fas-accent-b-soft: rgba(88, 166, 255, 0.2);
   --fas-accent-s: #d29922;
   --fas-accent-s-soft: rgba(210, 153, 34, 0.22);
+  --fas-accent-r: #a371f7;
+  --fas-accent-r-soft: rgba(163, 113, 247, 0.22);
   --fas-danger: #f85149;
   --fas-danger-hover: #ff7b72;
   --fas-focus-ring: rgba(88, 166, 255, 0.45);
@@ -98,6 +100,12 @@ video.fas-selected-s {
   box-shadow: 0 0 0 4px var(--fas-accent-s-soft) !important;
 }
 
+img.fas-selected-r {
+  outline: 3px solid var(--fas-accent-r) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 4px var(--fas-accent-r-soft) !important;
+}
+
 /* Fixed border ring glued to the image’s viewport box */
 .fas-ring {
   position: fixed !important;
@@ -123,6 +131,11 @@ video.fas-selected-s {
 .fas-ring--s {
   border: 3px solid var(--fas-accent-s) !important;
   box-shadow: 0 0 0 3px var(--fas-accent-s-soft), inset 0 0 0 1px rgba(210, 153, 34, 0.4) !important;
+}
+
+.fas-ring--r {
+  border: 3px solid var(--fas-accent-r) !important;
+  box-shadow: 0 0 0 3px var(--fas-accent-r-soft), inset 0 0 0 1px rgba(163, 113, 247, 0.4) !important;
 }
 
 /* A/B badge – always fixed; left/top set in JS from image getBoundingClientRect() */
@@ -158,6 +171,12 @@ video.fas-selected-s {
 
 .fas-badge--s {
   background: var(--fas-accent-s) !important;
+  min-width: 22px !important;
+  font-size: 11px !important;
+}
+
+.fas-badge--r {
+  background: var(--fas-accent-r) !important;
   min-width: 22px !important;
   font-size: 11px !important;
 }

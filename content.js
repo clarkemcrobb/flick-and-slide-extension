@@ -51,6 +51,8 @@
   const FAS_CLOSE_COMPARISON = 'FAS_CLOSE_COMPARISON';
   const FAS_COMPARISON_CLOSED = 'FAS_COMPARISON_CLOSED';
   const FAS_ENTER_SOURCE_PICK = 'FAS_ENTER_SOURCE_PICK';
+  const FAS_ENTER_REF_PICK = 'FAS_ENTER_REF_PICK';
+  const MAX_REFERENCE_IMAGES = 10;
 
   const state = {
     active: false,
@@ -58,8 +60,12 @@
     imageA: null,
     imageB: null,
     imageSource: null,
+    /** @type {Array} up to MAX_REFERENCE_IMAGES image snapshots for video ref mode */
+    referenceImages: [],
     /** When true, next image click assigns the Source image (A/B stay selected). */
     selectingSource: false,
+    /** When true, clicks add reference images (up to 10); videos A/B stay selected. */
+    selectingRefs: false,
     comparing: false,
     banner: null,
     fab: null,
@@ -232,7 +238,9 @@
     state.imageA = null;
     state.imageB = null;
     state.imageSource = null;
+    state.referenceImages = [];
     state.selectingSource = false;
+    state.selectingRefs = false;
     state.comparing = false;
 
     removeEl(state.banner);
@@ -278,9 +286,20 @@
       'aria-live': 'polite',
     });
 
-    const labelText = state.selectingSource
-      ? 'Select a source image or video (A and B stay selected)'
-      : 'Select the two images or videos to compare';
+    let labelText = 'Select the two images or videos to compare';
+    if (state.selectingSource) {
+      labelText = 'Select a source image or video (A and B stay selected)';
+    } else if (state.selectingRefs) {
+      const n = state.referenceImages.length;
+      labelText =
+        'Select up to ' +
+        MAX_REFERENCE_IMAGES +
+        ' reference images (' +
+        n +
+        '/' +
+        MAX_REFERENCE_IMAGES +
+        ' selected). Then click Done.';
+    }
 
     const label = $('span', 'fas-banner__text', {
       text: labelText,
@@ -300,6 +319,37 @@
       });
       banner.appendChild(label);
       banner.appendChild(cancelBtn);
+    } else if (state.selectingRefs) {
+      banner.appendChild(label);
+      const doneBtn = $('button', 'fas-banner__close', {
+        type: 'button',
+        text: 'Done',
+        title: 'Finish selecting reference images and open comparison',
+        'aria-label': 'Done selecting reference images',
+      });
+      doneBtn.disabled = state.referenceImages.length < 1;
+      if (state.referenceImages.length < 1) {
+        doneBtn.style.opacity = '0.5';
+        doneBtn.style.cursor = 'not-allowed';
+      }
+      doneBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        finishRefPick();
+      });
+      const cancelBtn = $('button', 'fas-banner__close', {
+        type: 'button',
+        text: 'Cancel',
+        title: 'Cancel reference selection and reopen comparison',
+        'aria-label': 'Cancel reference selection',
+      });
+      cancelBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelRefPick();
+      });
+      banner.appendChild(doneBtn);
+      banner.appendChild(cancelBtn);
     }
 
     const closeBtn = $('button', 'fas-banner__close', {
@@ -314,7 +364,7 @@
       deactivate();
     });
 
-    if (!state.selectingSource) {
+    if (!state.selectingSource && !state.selectingRefs) {
       banner.appendChild(label);
     }
     banner.appendChild(closeBtn);
@@ -341,6 +391,92 @@
     updateBanner();
     if (state.imageA && state.imageB) {
       openComparison();
+    }
+  }
+
+  function enterRefPickMode() {
+    state.comparing = false;
+    state.selectingSource = false;
+    state.selectingRefs = true;
+    // Keep any existing refs so user can add more (up to max)
+    updateFab();
+    updateBanner();
+    enforceSelectionInvariants();
+  }
+
+  function cancelRefPick() {
+    state.selectingRefs = false;
+    updateBanner();
+    if (state.imageA && state.imageB) {
+      openComparison({ preferredMode: 'refs' });
+    }
+  }
+
+  function finishRefPick() {
+    if (state.referenceImages.length < 1) {
+      showMediaError('Select at least one reference image, or click Cancel.');
+      return;
+    }
+    state.selectingRefs = false;
+    updateBanner();
+    openComparison({ preferredMode: 'refs' });
+  }
+
+  function clearReferenceChrome() {
+    state.referenceImages.forEach((ref) => {
+      if (ref && ref.el) {
+        try {
+          ref.el.classList.remove('fas-selected-r');
+        } catch (_) {}
+        removeSelectionChrome(ref.el);
+      }
+    });
+  }
+
+  function assignReference(img) {
+    // Toggle off if already a reference
+    const existingIdx = state.referenceImages.findIndex(
+      (r) => r.el === img || isSameSelection(r.el, img)
+    );
+    if (existingIdx >= 0) {
+      const removed = state.referenceImages.splice(existingIdx, 1)[0];
+      if (removed && removed.el) {
+        try {
+          removed.el.classList.remove('fas-selected-r');
+        } catch (_) {}
+        removeSelectionChrome(removed.el);
+      }
+      // re-number remaining badges
+      state.referenceImages.forEach((r, i) => {
+        if (r.el) placeSelectionChrome(r.el, 'R', String(i + 1));
+      });
+      updateBanner();
+      return;
+    }
+    if (state.referenceImages.length >= MAX_REFERENCE_IMAGES) {
+      showMediaError(
+        'You can select up to ' + MAX_REFERENCE_IMAGES + ' reference images. Click Done when ready.'
+      );
+      return;
+    }
+    const snap = snapshotImage(img);
+    if (snap.kind !== 'image') {
+      showMediaError('Reference items must be images (not videos).');
+      return;
+    }
+    if (!isTransferableSrc(snap.src)) {
+      showMediaError(
+        'This image cannot be opened in the comparison window (unsupported or protected source).'
+      );
+      return;
+    }
+    state.referenceImages.push(snap);
+    img.classList.add('fas-selected-r');
+    img.classList.remove('fas-selected-a', 'fas-selected-b', 'fas-selected-s');
+    placeSelectionChrome(img, 'R', String(state.referenceImages.length));
+    updateBanner();
+    if (state.referenceImages.length >= MAX_REFERENCE_IMAGES) {
+      showMediaError('Maximum of ' + MAX_REFERENCE_IMAGES + ' reference images selected. Click Done.');
     }
   }
 
@@ -387,7 +523,7 @@
   function clearAllHighlights() {
     state.selectableImgs.forEach((img) => {
       try {
-        img.classList.remove('fas-selectable', 'fas-selected-a', 'fas-selected-b', 'fas-selected-s');
+        img.classList.remove('fas-selectable', 'fas-selected-a', 'fas-selected-b', 'fas-selected-s', 'fas-selected-r');
       } catch (_) {
         /* detached */
       }
@@ -432,22 +568,37 @@
   // Host pages often override img outline/border; overlays avoid that fight.
   // ---------------------------------------------------------------------------
 
-  function placeSelectionChrome(img, side) {
-    // Enforce one ring/badge per side globally (no duplicate A’s or B’s).
+  function placeSelectionChrome(img, side, badgeText) {
+    // Enforce one ring/badge per exclusive side (A/B/S). Reference rings (R) allow many.
     const toRemove = [];
     state.selectionChrome.forEach((chrome, otherImg) => {
-      if (otherImg === img || chrome.side === side) {
+      if (otherImg === img) {
+        toRemove.push(otherImg);
+      } else if (side !== 'R' && chrome.side === side) {
         toRemove.push(otherImg);
       }
     });
     toRemove.forEach((otherImg) => removeSelectionChrome(otherImg));
 
-    const ring = $('div', 'fas-ring fas-ring--' + side.toLowerCase(), {
+    const ringClass =
+      side === 'R' ? 'fas-ring fas-ring--r' : 'fas-ring fas-ring--' + side.toLowerCase();
+    const badgeClass =
+      side === 'R' ? 'fas-badge fas-badge--r' : 'fas-badge fas-badge--' + side.toLowerCase();
+    const ring = $('div', ringClass, {
       'aria-hidden': 'true',
     });
-    const badge = $('div', 'fas-badge fas-badge--' + side.toLowerCase(), {
-      text: side === 'S' ? 'S' : side,
-      title: side === 'S' ? 'Source image' : 'Image ' + side,
+    let label = badgeText;
+    if (label == null) {
+      if (side === 'S') label = 'S';
+      else if (side === 'R') label = 'R';
+      else label = side;
+    }
+    let title = 'Image ' + side;
+    if (side === 'S') title = 'Source';
+    if (side === 'R') title = 'Reference image ' + label;
+    const badge = $('div', badgeClass, {
+      text: String(label),
+      title: title,
       'aria-hidden': 'true',
     });
 
@@ -823,15 +974,26 @@
       state.imageB = null;
     }
 
-    // Source chrome (third slot — does not conflict with A/B for identity)
+    // Source chrome
     if (state.imageSource && state.imageSource.el && state.imageSource.el.isConnected) {
       allowed.add(state.imageSource.el);
       state.imageSource.el.classList.add('fas-selected-s');
-      state.imageSource.el.classList.remove('fas-selected-a', 'fas-selected-b');
+      state.imageSource.el.classList.remove('fas-selected-a', 'fas-selected-b', 'fas-selected-r');
       placeSelectionChrome(state.imageSource.el, 'S');
     } else if (state.imageSource && (!state.imageSource.el || !state.imageSource.el.isConnected)) {
       state.imageSource = null;
     }
+
+    // Reference image chrome (numbered)
+    state.referenceImages = (state.referenceImages || []).filter(
+      (r) => r && r.el && r.el.isConnected
+    );
+    state.referenceImages.forEach((r, i) => {
+      allowed.add(r.el);
+      r.el.classList.add('fas-selected-r');
+      r.el.classList.remove('fas-selected-a', 'fas-selected-b', 'fas-selected-s');
+      placeSelectionChrome(r.el, 'R', String(i + 1));
+    });
 
     // Remove any leftover chrome not belonging to current slots
     const extras = [];
@@ -840,7 +1002,12 @@
     });
     extras.forEach((el) => {
       try {
-        el.classList.remove('fas-selected-a', 'fas-selected-b', 'fas-selected-s');
+        el.classList.remove(
+          'fas-selected-a',
+          'fas-selected-b',
+          'fas-selected-s',
+          'fas-selected-r'
+        );
       } catch (_) {}
       removeSelectionChrome(el);
     });
@@ -856,6 +1023,16 @@
     }
     state.lastSelectTs = now;
     state.lastSelectImg = img;
+
+    // Reference-pick mode: add/remove images (up to 10); videos A/B stay selected
+    if (state.selectingRefs) {
+      if (slotMatchesImg(state.imageA, img) || slotMatchesImg(state.imageB, img)) {
+        showMediaError('Choose still images for references — not the selected videos.');
+        return;
+      }
+      assignReference(img);
+      return;
+    }
 
     // Source-pick mode: A and B stay selected; assign Source and reopen comparison
     if (state.selectingSource) {
@@ -1032,7 +1209,7 @@
   function updateFab() {
     const both = !!(state.imageA && state.imageB);
     // Hide FAB while comparison window is open; show again when it closes.
-    if (both && state.active && !state.comparing && !state.selectingSource) {
+    if (both && state.active && !state.comparing && !state.selectingSource && !state.selectingRefs) {
       if (!state.fab) {
         const fab = $('button', 'fas-fab', {
           type: 'button',
@@ -1056,7 +1233,8 @@
   // Comparison window (separate Chrome window via background)
   // ---------------------------------------------------------------------------
 
-  function openComparison() {
+  function openComparison(options) {
+    options = options || {};
     if (!state.imageA || !state.imageB) return;
 
     if (state.imageA.el) {
@@ -1085,6 +1263,8 @@
           imageSource: state.imageSource
             ? toPayloadImage(state.imageSource)
             : null,
+          referenceImages: (state.referenceImages || []).map((r) => toPayloadImage(r)),
+          preferredMode: options.preferredMode || null,
         },
       },
       (response, lastErr) => {
@@ -1134,6 +1314,7 @@
   function onComparisonClosed() {
     state.comparing = false;
     state.selectingSource = false;
+    state.selectingRefs = false;
     if (state.active) {
       deactivate();
     } else {
@@ -1144,7 +1325,14 @@
   function onEnterSourcePick() {
     // Comparison closed temporarily so the user can pick a source image
     state.comparing = false;
+    state.selectingRefs = false;
     enterSourcePickMode();
+  }
+
+  function onEnterRefPick() {
+    state.comparing = false;
+    state.selectingSource = false;
+    enterRefPickMode();
   }
 
   // ---------------------------------------------------------------------------
@@ -1166,6 +1354,8 @@
         requestCloseComparison();
       } else if (state.selectingSource) {
         cancelSourcePick();
+      } else if (state.selectingRefs) {
+        cancelRefPick();
       } else if (state.active) {
         deactivate();
       }
@@ -1177,6 +1367,7 @@
         state.active &&
         !state.comparing &&
         !state.selectingSource &&
+        !state.selectingRefs &&
         state.imageA &&
         state.imageB
       ) {
@@ -1213,6 +1404,12 @@
 
       if (msg.type === FAS_ENTER_SOURCE_PICK) {
         onEnterSourcePick();
+        sendResponse({ ok: true });
+        return true;
+      }
+
+      if (msg.type === FAS_ENTER_REF_PICK) {
+        onEnterRefPick();
         sendResponse({ ok: true });
         return true;
       }

@@ -21,6 +21,8 @@ const FAS_COMPARISON_CLOSED = 'FAS_COMPARISON_CLOSED';
 const FAS_CHECK_UPDATES = 'FAS_CHECK_UPDATES';
 const FAS_REQUEST_SOURCE_PICK = 'FAS_REQUEST_SOURCE_PICK';
 const FAS_ENTER_SOURCE_PICK = 'FAS_ENTER_SOURCE_PICK';
+const FAS_REQUEST_REF_PICK = 'FAS_REQUEST_REF_PICK';
+const FAS_ENTER_REF_PICK = 'FAS_ENTER_REF_PICK';
 
 const MENU_CHECK_UPDATES = 'fas-check-updates';
 
@@ -41,7 +43,7 @@ let comparisonWindowId = null;
 let sourceTabId = null;
 /** Prevent double notify when both windows.remove and onRemoved fire */
 let comparisonCloseNotified = false;
-/** 'exit' = full tool shutdown; 'source-pick' = keep selection, enter source pick mode */
+/** 'exit' | 'source-pick' | 'ref-pick' */
 let pendingCloseReason = 'exit';
 
 function delay(ms) {
@@ -193,8 +195,9 @@ async function notifyComparisonClosed(reason) {
 
   if (tabId == null) return;
 
-  const messageType =
-    resolvedReason === 'source-pick' ? FAS_ENTER_SOURCE_PICK : FAS_COMPARISON_CLOSED;
+  let messageType = FAS_COMPARISON_CLOSED;
+  if (resolvedReason === 'source-pick') messageType = FAS_ENTER_SOURCE_PICK;
+  else if (resolvedReason === 'ref-pick') messageType = FAS_ENTER_REF_PICK;
 
   try {
     await chrome.tabs.sendMessage(tabId, { type: messageType });
@@ -208,7 +211,11 @@ async function notifyComparisonClosed(reason) {
  * @param {'exit'|'source-pick'} [reason]
  */
 async function closeComparisonWindow(preferredId, reason) {
-  pendingCloseReason = reason === 'source-pick' ? 'source-pick' : 'exit';
+  if (reason === 'source-pick' || reason === 'ref-pick') {
+    pendingCloseReason = reason;
+  } else {
+    pendingCloseReason = 'exit';
+  }
   const id = await resolveComparisonWindowId(preferredId);
   if (id == null) {
     await notifyComparisonClosed(pendingCloseReason);
@@ -237,9 +244,11 @@ async function openComparisonWindow(payload, tabId) {
 
   await chrome.storage.session.set({
     comparison: {
+      mediaKind: payload.mediaKind || 'image',
       imageA: payload.imageA,
       imageB: payload.imageB,
       imageSource: payload.imageSource || null,
+      referenceImages: payload.referenceImages || [],
       createdAt: Date.now(),
     },
     sourceTabId: sourceTabId,
@@ -624,6 +633,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const preferredId =
       sender.tab && sender.tab.windowId != null ? sender.tab.windowId : null;
     closeComparisonWindow(preferredId, 'source-pick')
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
+  if (msg.type === FAS_REQUEST_REF_PICK) {
+    const preferredId =
+      sender.tab && sender.tab.windowId != null ? sender.tab.windowId : null;
+    closeComparisonWindow(preferredId, 'ref-pick')
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Flick and Slide",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Flick and Slide \u2013 Compare images or videos from any webpage in a dedicated window. Flick, Side by Side, or Comparison Slider, with optional source media and synced video playback.",
   "permissions": [
     "activeTab",

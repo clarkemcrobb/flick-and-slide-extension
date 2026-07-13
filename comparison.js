@@ -9,11 +9,15 @@ const FAS_GET_COMPARISON = 'FAS_GET_COMPARISON';
 const FAS_CLOSE_COMPARISON = 'FAS_CLOSE_COMPARISON';
 const FAS_RESIZE_COMPARISON = 'FAS_RESIZE_COMPARISON';
 const FAS_REQUEST_SOURCE_PICK = 'FAS_REQUEST_SOURCE_PICK';
+const FAS_REQUEST_REF_PICK = 'FAS_REQUEST_REF_PICK';
 
 const state = {
   imageA: null,
   imageB: null,
   imageSource: null,
+  /** @type {Array<{src:string,naturalWidth:number,naturalHeight:number,kind?:string}>} */
+  referenceImages: [],
+  refIndex: 0,
   /** @type {'image'|'video'} */
   mediaKind: 'image',
   mode: 'flick',
@@ -75,18 +79,28 @@ function requestSourcePick() {
   });
 }
 
+function requestRefPick() {
+  chrome.runtime.sendMessage({ type: FAS_REQUEST_REF_PICK }, () => {
+    try {
+      window.close();
+    } catch (_) {}
+  });
+}
+
 function getModeTitles() {
   if (state.mediaKind === 'video') {
     return {
       flick: 'Flick Between Videos – A vs B',
       slider: 'Comparison Slider – A vs B',
       side: 'Side by Side – A vs B',
+      refs: 'Compare to Reference Images – A vs B',
     };
   }
   return {
     flick: 'Flick Between Images – A vs B',
     slider: 'Comparison Slider – A vs B',
     side: 'Side by Side – A vs B',
+    refs: 'Compare to Reference Images – A vs B',
   };
 }
 
@@ -365,10 +379,22 @@ function setMode(mode) {
     state.arWarningDismissed = false;
   }
 
+  // Video-only mode: entering without refs starts the pick flow
+  if (mode === 'refs') {
+    if (state.mediaKind !== 'video') {
+      mode = 'flick';
+    } else if (!state.referenceImages || state.referenceImages.length < 1) {
+      requestRefPick();
+      return;
+    }
+  }
+
   $('pane-flick').classList.toggle('is-visible', mode === 'flick');
   $('pane-slider').classList.toggle('is-visible', mode === 'slider');
   const paneSide = $('pane-side');
   if (paneSide) paneSide.classList.toggle('is-visible', mode === 'side');
+  const paneRefs = $('pane-refs');
+  if (paneRefs) paneRefs.classList.toggle('is-visible', mode === 'refs');
 
   const titleText = titles[mode];
   const titleEl = $('panel-title');
@@ -397,6 +423,15 @@ function setMode(mode) {
     transport.hidden = state.mediaKind !== 'video';
   }
 
+  const tabRefs = $('tab-refs');
+  if (tabRefs) {
+    tabRefs.hidden = state.mediaKind !== 'video';
+  }
+
+  if (mode === 'refs') {
+    updateRefsView();
+  }
+
   document.querySelectorAll('#mode-tabs .fas-btn').forEach((btn) => {
     const active = btn.getAttribute('data-mode') === mode;
     btn.classList.toggle('is-active', active);
@@ -406,7 +441,10 @@ function setMode(mode) {
   // When switching modes, keep video timeline but ensure visibility layers correct
   if (state.mediaKind === 'video') {
     updateVideoLayerVisibility();
-    if (window.__fasVideoSync) window.__fasVideoSync.refreshDurations();
+    if (window.__fasVideoSync) {
+      window.__fasVideoSync.refreshDurations();
+      window.__fasVideoSync.applyMutePolicy();
+    }
   }
 
   applyImageFit();
@@ -426,9 +464,11 @@ function applyImageFit() {
   app.classList.toggle('is-fit-original', isOriginal);
 
   // Stage scroll when showing true original pixels that may exceed the frame
-  document.querySelectorAll('.fas-flick__stage, .fas-side__stage').forEach((stage) => {
-    stage.classList.toggle('is-original-fit', isOriginal);
-  });
+  document
+    .querySelectorAll('.fas-flick__stage, .fas-side__stage, .fas-refs__stage')
+    .forEach((stage) => {
+      stage.classList.toggle('is-original-fit', isOriginal);
+    });
 
   // Set intrinsic dimensions for original mode so layout uses natural pixels
   document.querySelectorAll('.fas-fit-img').forEach((el) => {
@@ -597,6 +637,7 @@ function showFlickSide(side) {
       swapBtn.textContent =
         'Swap to ' + (next === 'A' ? nounB() : nounA());
     }
+    if (window.__fasVideoSync) window.__fasVideoSync.applyMutePolicy();
     return;
   }
 
@@ -627,6 +668,79 @@ function showFlickSide(side) {
 function swapFlick() {
   showFlickSide(null);
 }
+
+function showReferenceAt(index) {
+  const refs = state.referenceImages || [];
+  if (!refs.length) return;
+  const n = refs.length;
+  let i = ((index % n) + n) % n;
+  state.refIndex = i;
+  const item = refs[i];
+  const img = $('refs-img');
+  const label = $('refs-label');
+  const ar = $('refs-ar');
+  if (img && item) {
+    img.src = item.src;
+    img.alt = 'Reference ' + (i + 1);
+    attachImageFallback(img, 'Reference ' + (i + 1));
+  }
+  if (label) {
+    label.textContent = 'Reference ' + (i + 1) + ' of ' + n;
+  }
+  if (ar && item) {
+    const dims = dimsForImageData(item, img);
+    const nearest = nearestAspectRatio(dims.w, dims.h);
+    ar.textContent = nearest ? 'AR: ' + nearest.label : 'AR: -';
+    ar.hidden = false;
+  }
+  if (state.imageFit === 'original') applyImageFit();
+}
+
+function stepReference(delta) {
+  const refs = state.referenceImages || [];
+  if (!refs.length) return;
+  showReferenceAt(state.refIndex + (delta || 1));
+}
+
+function showRefsVideoSide(side) {
+  if (!state.imageA || !state.imageB) return;
+  let next;
+  if (side === 'A' || side === 'B') next = side;
+  else next = state.flickSide === 'A' ? 'B' : 'A';
+  state.flickSide = next;
+  const vA = $('refs-vid-a');
+  const vB = $('refs-vid-b');
+  if (vA) vA.hidden = next !== 'A';
+  if (vB) vB.hidden = next !== 'B';
+  const label = $('refs-video-label');
+  const swapBtn = $('btn-ref-swap-video');
+  if (label) {
+    label.textContent = next === 'A' ? nounA() : nounB();
+    label.setAttribute('data-side', next);
+  }
+  if (swapBtn) {
+    swapBtn.textContent = 'Swap to ' + (next === 'A' ? nounB() : nounA());
+  }
+  if (window.__fasVideoSync) window.__fasVideoSync.applyMutePolicy();
+}
+
+function updateRefsView() {
+  showReferenceAt(state.refIndex || 0);
+  showRefsVideoSide(state.flickSide || 'A');
+  const arStack = $('refs-video-ar');
+  if (arStack) {
+    const lineA = formatArLine('A', state.imageA, $('refs-vid-a'));
+    const lineB = formatArLine('B', state.imageB, $('refs-vid-b'));
+    arStack.innerHTML =
+      '<span class="fas-ar-line--a">' +
+      lineA +
+      '</span><span class="fas-ar-line--b">' +
+      lineB +
+      '</span>';
+    arStack.hidden = false;
+  }
+}
+
 
 function wireSlider() {
   const root = $('slider');
@@ -768,16 +882,43 @@ function createVideoSyncController() {
 
   function applyMutePolicy() {
     const vs = list();
-    vs.forEach((v, i) => {
-      // Primary audio = first registered (video A). Mute others unless mute-all.
-      if (state.videoMutedAll) {
+    // Side by Side and Slider: no audio. Mute-all control also silences everything.
+    const forceMuteAll =
+      state.videoMutedAll || state.mode === 'slider' || state.mode === 'side';
+    const side = state.flickSide === 'B' ? 'B' : 'A';
+
+    vs.forEach((v) => {
+      if (forceMuteAll) {
         v.muted = true;
-      } else {
-        v.muted = i !== 0;
+        return;
       }
+      // Flick / reference mode: only the visible A or B video plays audio
+      let audible = false;
+      if (state.mode === 'flick') {
+        audible =
+          (side === 'A' && v.id === 'flick-vid-a') ||
+          (side === 'B' && v.id === 'flick-vid-b');
+      } else if (state.mode === 'refs') {
+        audible =
+          (side === 'A' && v.id === 'refs-vid-a') ||
+          (side === 'B' && v.id === 'refs-vid-b');
+      }
+      v.muted = !audible;
     });
+
     const muteBtn = $('btn-mute');
-    if (muteBtn) muteBtn.textContent = state.videoMutedAll ? 'Unmute' : 'Mute';
+    if (muteBtn) {
+      // In side/slider, audio is always off — reflect that on the control
+      if (state.mode === 'slider' || state.mode === 'side') {
+        muteBtn.textContent = 'Muted';
+        muteBtn.disabled = true;
+        muteBtn.title = 'Audio is disabled in Side by Side and Slider modes';
+      } else {
+        muteBtn.disabled = false;
+        muteBtn.title = 'Mute all';
+        muteBtn.textContent = state.videoMutedAll ? 'Unmute' : 'Mute';
+      }
+    }
   }
 
   function tick() {
@@ -958,6 +1099,12 @@ function updateVideoLayerVisibility() {
       if (el) el.hidden = true;
     }
   );
+
+  // Refs mode: one video visible on the right
+  const rVA = $('refs-vid-a');
+  const rVB = $('refs-vid-b');
+  if (rVA) rVA.hidden = side !== 'A';
+  if (rVB) rVB.hidden = side !== 'B';
 }
 
 function wireVideoSrc(videoEl, item, label) {
@@ -1038,10 +1185,15 @@ function loadImages(comparison) {
   state.imageA = comparison.imageA;
   state.imageB = comparison.imageB;
   state.imageSource = comparison.imageSource || null;
+  state.referenceImages = Array.isArray(comparison.referenceImages)
+    ? comparison.referenceImages.slice()
+    : [];
+  state.refIndex = 0;
   state.mediaKind =
     comparison.mediaKind ||
     (comparison.imageA && comparison.imageA.kind) ||
     'image';
+  const preferredMode = comparison.preferredMode || null;
 
   const isVideo = state.mediaKind === 'video';
   setMediaVisibility(isVideo);
@@ -1097,6 +1249,8 @@ function loadImages(comparison) {
     const sVA = $('slider-vid-a');
     const sVB = $('slider-vid-b');
     const srcV = $('source-vid');
+    const rVA = $('refs-vid-a');
+    const rVB = $('refs-vid-b');
 
     wireVideoSrc(vA, state.imageA, nounA());
     wireVideoSrc(vB, state.imageB, nounB());
@@ -1104,21 +1258,19 @@ function loadImages(comparison) {
     wireVideoSrc(sideVB, state.imageB, nounB());
     wireVideoSrc(sVA, state.imageA, nounA());
     wireVideoSrc(sVB, state.imageB, nounB());
+    wireVideoSrc(rVA, state.imageA, nounA());
+    wireVideoSrc(rVB, state.imageB, nounB());
     if (state.imageSource) wireVideoSrc(srcV, state.imageSource, nounSource());
 
-    // Sync controller drives the "primary" set: prefer visible-mode elements.
-    // Register A first (audio primary), then B, then source.
-    // Use side videos as canonical (always both present); flick/slider share same src.
-    // Actually each element is independent decoder — register one set to save resources.
-    // Use flick-vid-a/b + source as master; on mode change we need all playing...
-    // Register ALL non-null videos that are part of comparison so every mode stays in sync.
+    // Register all video elements so mode switches stay in sync (A first = primary audio)
     const syncList = [vA, vB];
     if (state.imageSource && srcV) syncList.push(srcV);
-    // Also side + slider so switching modes doesn't desync
     if (sideVA) syncList.push(sideVA);
     if (sideVB) syncList.push(sideVB);
     if (sVA) syncList.push(sVA);
     if (sVB) syncList.push(sVB);
+    if (rVA) syncList.push(rVA);
+    if (rVB) syncList.push(rVB);
 
     window.__fasVideoSync.setVideos(syncList);
     updateVideoLayerVisibility();
@@ -1169,7 +1321,15 @@ function loadImages(comparison) {
   if (sideLb) sideLb.textContent = nounB();
 
   applySliderPct(50);
-  setMode('flick');
+  let startMode = 'flick';
+  if (
+    preferredMode === 'refs' &&
+    state.mediaKind === 'video' &&
+    state.referenceImages.length > 0
+  ) {
+    startMode = 'refs';
+  }
+  setMode(startMode);
 
   if (!isVideo) {
     const fitImgs = [
@@ -1240,6 +1400,22 @@ function wireUi() {
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode')));
   });
 
+  const btnRefPrev = $('btn-ref-prev');
+  const btnRefNext = $('btn-ref-next');
+  if (btnRefPrev) btnRefPrev.addEventListener('click', () => stepReference(-1));
+  if (btnRefNext) btnRefNext.addEventListener('click', () => stepReference(1));
+  const btnRefSwap = $('btn-ref-swap-video');
+  if (btnRefSwap) {
+    btnRefSwap.addEventListener('click', () => showRefsVideoSide(null));
+  }
+  const btnRefsChange = $('btn-refs-change');
+  if (btnRefsChange) {
+    btnRefsChange.addEventListener('click', (e) => {
+      e.preventDefault();
+      requestRefPick();
+    });
+  }
+
   // Click media to toggle fill frame ↔ original size (Flick + Side by Side)
   document.querySelectorAll('.fas-fit-img').forEach((el) => {
     el.addEventListener('click', toggleImageFit);
@@ -1304,6 +1480,20 @@ function wireUi() {
       e.preventDefault();
       setViewSize('fullscreen');
       return;
+    }
+
+    // Reference mode: ← steps reference images, → toggles videos A/B
+    if (state.mode === 'refs') {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        stepReference(-1);
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        showRefsVideoSide(null);
+        return;
+      }
     }
 
     // Flick mode: either arrow key toggles A ↔ B (no directionality)

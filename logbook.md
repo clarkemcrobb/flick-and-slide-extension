@@ -1,5 +1,12 @@
 # Logbook
 
+## v3.1.0 – Reference images & video polish (2026-07-11)
+
+- **Compare to Reference Images** (video sessions): select up to 10 stills from the page; dual flick layout (references left, videos A/B right)
+- Keyboard: ← steps references, → switches videos A/B
+- Video audio: audible track follows the visible A/B video in Flick and Reference modes; Side by Side and Slider stay muted
+- Millisecond video timestamps and finer scrubber resolution
+
 ## v3.0.0 – Video comparison (2026-07-11)
 
 Major release: compare **videos** with the same workflows as images.

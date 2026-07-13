@@ -71,6 +71,17 @@
             >
               Side by Side
             </button>
+            <button
+              type="button"
+              class="fas-btn"
+              role="tab"
+              aria-selected="false"
+              data-mode="refs"
+              id="tab-refs"
+              hidden
+            >
+              Compare to Reference Images
+            </button>
           </div>
         </div>
       </header>
@@ -220,6 +231,70 @@
                 ></video>
               </div>
               <div class="fas-side__label fas-side__label--b" id="side-label-b">Image B</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Video: reference images (left) + videos A/B (right) -->
+        <div class="fas-mode-pane" data-pane="refs" id="pane-refs">
+          <p class="fas-refs-explainer" id="refs-explainer">
+            Left: flick through your reference images. Right: flick between videos A and B.
+            Use the buttons below, or press <strong>←</strong> for references and
+            <strong>→</strong> for videos.
+          </p>
+          <div class="fas-refs" id="refs-root">
+            <div class="fas-refs__panel fas-refs__panel--left">
+              <div class="fas-refs__stage">
+                <div class="fas-ar-badge" id="refs-ar" aria-hidden="true"></div>
+                <img
+                  class="fas-fit-img"
+                  id="refs-img"
+                  alt="Reference image"
+                  draggable="false"
+                  title="Click to toggle fill the frame and original size"
+                />
+              </div>
+              <div class="fas-refs__label" id="refs-label">Reference 1</div>
+              <div class="fas-refs__controls">
+                <button type="button" class="fas-btn fas-btn--primary" id="btn-ref-prev">
+                  Previous reference
+                </button>
+                <button type="button" class="fas-btn fas-btn--primary" id="btn-ref-next">
+                  Next reference
+                </button>
+              </div>
+              <div class="fas-refs__hint">← Left arrow key also steps references</div>
+            </div>
+            <div class="fas-refs__divider" aria-hidden="true"></div>
+            <div class="fas-refs__panel fas-refs__panel--right">
+              <div class="fas-refs__stage">
+                <div class="fas-ar-badge fas-ar-badge--stack" id="refs-video-ar" aria-hidden="true"></div>
+                <video
+                  class="fas-fit-img fas-media-video"
+                  id="refs-vid-a"
+                  playsinline
+                  preload="auto"
+                  title="Click to toggle fill the frame and original size"
+                ></video>
+                <video
+                  class="fas-fit-img fas-media-video"
+                  id="refs-vid-b"
+                  playsinline
+                  preload="auto"
+                  title="Click to toggle fill the frame and original size"
+                  hidden
+                ></video>
+              </div>
+              <div class="fas-refs__label" id="refs-video-label" data-side="A">Video A</div>
+              <div class="fas-refs__controls">
+                <button type="button" class="fas-btn fas-btn--primary" id="btn-ref-swap-video">
+                  Swap to Video B
+                </button>
+                <button type="button" class="fas-btn fas-btn--source" id="btn-refs-change">
+                  Change reference images
+                </button>
+              </div>
+              <div class="fas-refs__hint">→ Right arrow key also switches videos A and B</div>
             </div>
           </div>
         </div>

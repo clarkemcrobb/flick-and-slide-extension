@@ -18,6 +18,7 @@ Built with Manifest V3 and plain JavaScript/CSS — no frameworks.
 - **Side by Side** — view A and B next to each other
 - **Comparison Slider** — drag to compare overlays; warns when aspect ratios differ a lot
 - **Synced video playback** — A and B (and source, if set) play from the start together; shorter clips hold at the end until the longest finishes, then all loop from zero
+- **Compare to reference images** (video) — pick up to 10 stills from the page; flick references on the left and videos A/B on the right (← / →)
 - **Video transport** — play/pause, mute, scrubber, and millisecond timestamps
 - **Fill or original size** — media fills the frame by default; click to toggle native size
 - **Aspect ratio labels** — common ratios shown as badges (media is never stretched)
@@ -54,10 +55,11 @@ Unpacked extensions are not updated automatically by Chrome.
 2. Click the **Flick and Slide** icon in your extensions toolbar dropdown, or pin it to your toolbar for one-click activation.
 3. Click the first item (A), then the second (B). Both must be images **or** both must be videos.
 4. Click **Compare**, or press **C**.
-5. Choose a mode: **Flick**, **Comparison Slider**, or **Side by Side**.
+5. Choose a mode: **Flick**, **Comparison Slider**, **Side by Side**, or (for videos) **Compare to Reference Images**.
 6. For videos, use the transport bar to play, pause, mute, or scrub (time is shown in milliseconds).
 7. In Flick mode you can **Add a source** image or video (matching the type you selected), then pick a third item on the page for a fixed reference on the left.
-8. Close the comparison window when you are done — the tool exits fully.
+8. In **Compare to Reference Images**, pick up to 10 stills from the page, then flick references on the left and videos A/B on the right (← / → keys).
+9. Close the comparison window when you are done — the tool exits fully.
 
 ### Keyboard shortcuts
 
@@ -100,4 +102,4 @@ Unpacked extensions are not updated automatically by Chrome.
 
 Issues and pull requests are welcome on [GitHub](https://github.com/clarkemcrobb/flick-and-slide-extension).
 
-**Current version:** 3.0.0 — see `logbook.md` for release notes.
+**Current version:** 3.1.0 — see `logbook.md` for release notes.

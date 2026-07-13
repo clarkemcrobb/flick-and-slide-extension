@@ -608,6 +608,129 @@ body {
   display: none !important;
 }
 
+/* Compare to reference images (video sessions) */
+.fas-refs-explainer {
+  flex-shrink: 0;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--fas-text);
+  background: rgba(163, 113, 247, 0.12);
+  border: 1px solid rgba(163, 113, 247, 0.35);
+}
+
+.fas-refs-explainer strong {
+  color: #d2a8ff;
+  font-weight: 700;
+}
+
+.fas-refs {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+}
+
+.fas-refs__panel {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.fas-refs__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #010409;
+  border: 1px solid var(--fas-border-subtle);
+  border-radius: var(--fas-radius-md);
+  overflow: hidden;
+}
+
+.fas-refs__stage .fas-fit-img,
+.fas-refs__stage video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.fas-app.is-fit-fill .fas-refs__stage .fas-fit-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: zoom-out;
+}
+
+.fas-app.is-fit-original .fas-refs__stage .fas-fit-img {
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  object-fit: none;
+  cursor: zoom-in;
+}
+
+.fas-refs__label {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fas-text-muted);
+  flex-shrink: 0;
+}
+
+.fas-refs__panel--left .fas-refs__label {
+  color: #d2a8ff;
+}
+
+.fas-refs__panel--right .fas-refs__label[data-side="A"] {
+  color: var(--fas-accent-a);
+}
+
+.fas-refs__panel--right .fas-refs__label[data-side="B"] {
+  color: var(--fas-accent-b);
+}
+
+.fas-refs__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.fas-refs__hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--fas-text-muted);
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+
+.fas-refs__divider {
+  flex: 0 0 1px;
+  width: 1px;
+  margin: 0 12px;
+  background: var(--fas-border);
+  align-self: stretch;
+}
+
+.fas-refs__stage.is-original-fit {
+  overflow: auto;
+}
+
 .fas-flick__label {
   font-size: 13px;
   font-weight: 600;
