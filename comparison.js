@@ -413,15 +413,17 @@ function setMode(mode) {
     sliderHint.hidden = mode !== 'slider';
   }
 
+  const isVideo = state.mediaKind === 'video';
   const fitHint = $('fit-hint');
+  const fitHintVideo = $('fit-hint-video');
   if (fitHint) {
-    fitHint.hidden = mode === 'slider';
+    // Image sessions: standalone hint under content (hidden in slider)
+    fitHint.hidden = isVideo || mode === 'slider';
   }
-
-  const transport = $('transport');
-  if (transport) {
-    transport.hidden = state.mediaKind !== 'video';
+  if (fitHintVideo) {
+    fitHintVideo.hidden = !isVideo;
   }
+  placeVideoChrome();
 
   const tabRefs = $('tab-refs');
   if (tabRefs) {
@@ -504,15 +506,345 @@ function applyImageFit() {
 }
 
 function updateFitHintText() {
-  const fitHint = $('fit-hint');
-  if (!fitHint || fitHint.hidden) return;
-  if (state.imageFit === 'fill') {
-    fitHint.textContent =
-      'Showing the image filling the frame - click an image to return to original size';
-  } else {
-    fitHint.textContent =
-      'Showing original size - click an image to fill the frame';
+  const fillText =
+    state.mediaKind === 'video'
+      ? 'Showing the image filling the frame - click an image to return to original size'
+      : 'Showing fill frame - scroll to zoom · drag to pan · click to toggle original · double-click resets zoom';
+  const originalText =
+    state.mediaKind === 'video'
+      ? 'Showing original size - click an image to fill the frame'
+      : 'Showing original size - scroll to zoom · drag to pan · click to fill frame · double-click resets zoom';
+  const text = state.imageFit === 'fill' ? fillText : originalText;
+  ['fit-hint', 'fit-hint-video'].forEach((id) => {
+    const el = $(id);
+    if (el) el.textContent = text;
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// Image zoom / pan (all image modes, including linked slider zoom)
+// Scroll = zoom toward cursor · drag = pan when zoomed · double-click = reset
+// ---------------------------------------------------------------------------
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 12;
+const ZOOM_STEP = 1.12;
+
+/** Held for pan-while-zoomed on the slider (Space, like design tools). */
+let zoomSpaceHeld = false;
+
+/** @type {Map<string, ReturnType<typeof createZoomController>>} */
+const zoomControllers = new Map();
+
+/**
+ * Should this pointer gesture pan the zoomed image?
+ * Slider: left-drag always moves the split — pan with Space, Alt, or middle mouse.
+ * Other modes: left-drag pans when zoomed.
+ */
+function wantsZoomPan(e, viewport, scale) {
+  if (scale <= 1.001) return false;
+  if (e.button === 1) return true; // middle mouse
+  if (e.altKey || zoomSpaceHeld) return true;
+  const id = viewport.getAttribute('data-zoom-id');
+  // On the comparison slider, plain left-drag is reserved for the split
+  if (id === 'slider') return false;
+  return e.button === 0;
+}
+
+function createZoomController(viewport) {
+  const layer = viewport.querySelector('[data-zoom-layer]');
+  if (!layer) {
+    return {
+      getScale: () => 1,
+      reset: () => {},
+      destroy: () => {},
+      isPanning: () => false,
+      didPan: () => false,
+    };
   }
+
+  let scale = 1;
+  let tx = 0;
+  let ty = 0;
+  let panning = false;
+  let panStartX = 0;
+  let panStartY = 0;
+  let originTx = 0;
+  let originTy = 0;
+  let moved = false;
+  let enabled = true;
+
+  function apply() {
+    layer.style.transform =
+      'translate(' + tx + 'px, ' + ty + 'px) scale(' + scale + ')';
+    viewport.classList.toggle('is-zoomed', scale > 1.001);
+    viewport.classList.toggle('is-panning', panning);
+    // Hint on slider when zoomed
+    if (viewport.getAttribute('data-zoom-id') === 'slider') {
+      let hint = viewport.querySelector('.fas-zoom-hint');
+      if (scale > 1.001) {
+        if (!hint) {
+          hint = document.createElement('div');
+          hint.className = 'fas-zoom-hint';
+          viewport.appendChild(hint);
+        }
+        hint.textContent =
+          'Drag to move split · hold Space or Alt and drag to pan · scroll to zoom';
+        hint.hidden = false;
+      } else if (hint) {
+        hint.hidden = true;
+      }
+    }
+  }
+
+  /** Map a screen point into the zoom layer's unscaled local coordinates. */
+  function screenToLocal(clientX, clientY) {
+    const rect = viewport.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    return {
+      x: (px - tx) / scale,
+      y: (py - ty) / scale,
+    };
+  }
+
+  function clampPan() {
+    if (scale <= 1) {
+      tx = 0;
+      ty = 0;
+      return;
+    }
+    const rect = viewport.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    const limX = w * scale;
+    const limY = h * scale;
+    tx = Math.min(w * 0.5, Math.max(-limX + w * 0.5, tx));
+    ty = Math.min(h * 0.5, Math.max(-limY + h * 0.5, ty));
+  }
+
+  function reset() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    apply();
+  }
+
+  function zoomAt(clientX, clientY, factor) {
+    if (!enabled) return;
+    const rect = viewport.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const cx = (px - tx) / scale;
+    const cy = (py - ty) / scale;
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale * factor));
+    if (Math.abs(next - scale) < 0.0001) return;
+    scale = next;
+    if (scale <= 1.001) {
+      reset();
+      return;
+    }
+    tx = px - cx * scale;
+    ty = py - cy * scale;
+    clampPan();
+    apply();
+  }
+
+  function onWheel(e) {
+    if (!enabled) return;
+    if (e.target.closest && e.target.closest('.fas-video-chrome, .fas-slider__handle')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const direction = e.deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
+    const factor = e.ctrlKey ? Math.exp(-e.deltaY * 0.01) : direction;
+    zoomAt(e.clientX, e.clientY, factor);
+  }
+
+  function onPointerDown(e) {
+    if (!enabled) return;
+    if (e.target.closest && e.target.closest('.fas-slider__handle, .fas-video-chrome, button, input')) {
+      return;
+    }
+    if (!wantsZoomPan(e, viewport, scale)) return;
+    panning = true;
+    moved = false;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    originTx = tx;
+    originTy = ty;
+    try {
+      viewport.setPointerCapture(e.pointerId);
+    } catch (_) {}
+    e.preventDefault();
+    e.stopPropagation();
+    apply();
+  }
+
+  function onPointerMove(e) {
+    if (!panning) return;
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    if (Math.hypot(dx, dy) > 3) moved = true;
+    tx = originTx + dx;
+    ty = originTy + dy;
+    clampPan();
+    apply();
+  }
+
+  function onPointerUp(e) {
+    if (!panning) return;
+    panning = false;
+    try {
+      viewport.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    apply();
+  }
+
+  function onDblClick(e) {
+    if (!enabled) return;
+    if (e.target.closest && e.target.closest('.fas-slider__handle, .fas-video-chrome, button, input')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (scale > 1.001) {
+      reset();
+    } else {
+      zoomAt(e.clientX, e.clientY, 2.5);
+    }
+  }
+
+  viewport.addEventListener('wheel', onWheel, { passive: false });
+  viewport.addEventListener('pointerdown', onPointerDown);
+  viewport.addEventListener('pointermove', onPointerMove);
+  viewport.addEventListener('pointerup', onPointerUp);
+  viewport.addEventListener('pointercancel', onPointerUp);
+  viewport.addEventListener('dblclick', onDblClick);
+
+  apply();
+
+  return {
+    getScale: () => scale,
+    getTransform: () => ({ scale: scale, tx: tx, ty: ty }),
+    screenToLocal: screenToLocal,
+    didPan: () => moved,
+    isPanning: () => panning,
+    reset,
+    setEnabled(on) {
+      enabled = !!on;
+      if (!enabled) reset();
+    },
+    destroy() {
+      viewport.removeEventListener('wheel', onWheel);
+      viewport.removeEventListener('pointerdown', onPointerDown);
+      viewport.removeEventListener('pointermove', onPointerMove);
+      viewport.removeEventListener('pointerup', onPointerUp);
+      viewport.removeEventListener('pointercancel', onPointerUp);
+      viewport.removeEventListener('dblclick', onDblClick);
+      reset();
+    },
+  };
+}
+
+function initZoomControllers() {
+  zoomControllers.forEach((c) => c.destroy && c.destroy());
+  zoomControllers.clear();
+  document.querySelectorAll('.fas-zoom-viewport[data-zoom-id]').forEach((vp) => {
+    const id = vp.getAttribute('data-zoom-id');
+    if (!id) return;
+    zoomControllers.set(id, createZoomController(vp));
+  });
+  updateZoomEnabled();
+}
+
+function updateZoomEnabled() {
+  // Image zoom only (reference stills count as images)
+  const imageSession = state.mediaKind !== 'video';
+  zoomControllers.forEach((c, id) => {
+    if (id === 'refs-img') {
+      // Reference images pane: always allow zoom when that mode is used
+      c.setEnabled(true);
+      return;
+    }
+    c.setEnabled(imageSession);
+  });
+}
+
+function resetAllZooms() {
+  zoomControllers.forEach((c) => c.reset && c.reset());
+}
+
+/**
+ * Block slider-split drag only when the user is panning the zoom
+ * (Space / Alt / middle mouse). Plain left-drag always moves the split.
+ */
+function isZoomBlockingSliderDrag(e) {
+  if (!e) return false;
+  if (e.target && e.target.closest && e.target.closest('.fas-slider__handle')) {
+    return false;
+  }
+  const sliderZoom = zoomControllers.get('slider');
+  if (!sliderZoom || sliderZoom.getScale() <= 1.001) return false;
+  // Pan gesture in progress or requested — don't start a split drag
+  if (e.button === 1 || e.altKey || zoomSpaceHeld) return true;
+  if (sliderZoom.isPanning && sliderZoom.isPanning()) return true;
+  return false;
+}
+
+/**
+ * Attach the transport bar to the bottom of the active video frame
+ * (Flick stage, Side by Side area, Slider, or refs video stage).
+ */
+function placeVideoChrome() {
+  const chrome = $('video-chrome');
+  if (!chrome) return;
+
+  // Isolate transport from parent stage/slider drag & zoom handlers.
+  // Bubble phase only — capture would block the Play/Mute buttons themselves.
+  if (!chrome.dataset.eventsBound) {
+    chrome.dataset.eventsBound = '1';
+    const stop = (e) => {
+      e.stopPropagation();
+    };
+    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'mousedown', 'mouseup', 'touchstart'].forEach(
+      (type) => {
+        chrome.addEventListener(type, stop, false);
+      }
+    );
+  }
+
+  if (state.mediaKind !== 'video') {
+    chrome.hidden = true;
+    // Park outside stages so it is not left inside a hidden pane
+    const body = $('body');
+    if (body && chrome.parentElement !== body) body.appendChild(chrome);
+    return;
+  }
+
+  let host = null;
+  if (state.mode === 'flick') {
+    host = $('flick-stage');
+  } else if (state.mode === 'slider') {
+    // Prefer a dedicated host so controls are not under the slider hit-target tree
+    host = $('slider-chrome-host') || $('slider');
+  } else if (state.mode === 'side') {
+    host = document.querySelector('#pane-side .fas-side');
+  } else if (state.mode === 'refs') {
+    host = document.querySelector('.fas-refs__panel--right .fas-refs__stage');
+  }
+
+  if (!host) {
+    chrome.hidden = true;
+    return;
+  }
+
+  if (chrome.parentElement !== host) {
+    host.appendChild(chrome);
+  }
+  chrome.hidden = false;
 }
 
 function toggleImageFit(e) {
@@ -520,10 +852,20 @@ function toggleImageFit(e) {
     e.preventDefault();
     e.stopPropagation();
   }
-  // Only meaningful in flick / side modes
+  // Only meaningful in flick / side / refs modes
   if (state.mode === 'slider') return;
+  // Ignore click-to-fit after a pan gesture
+  if (e && e.currentTarget) {
+    const vp = e.currentTarget.closest && e.currentTarget.closest('.fas-zoom-viewport');
+    if (vp) {
+      const id = vp.getAttribute('data-zoom-id');
+      const z = id && zoomControllers.get(id);
+      if (z && (z.getScale() > 1.001 || z.didPan())) return;
+    }
+  }
   state.imageFit = state.imageFit === 'fill' ? 'original' : 'fill';
   applyImageFit();
+  resetAllZooms();
 }
 
 /** @type {number} Monotonic token so only the latest size click is treated as current. */
@@ -594,10 +936,20 @@ function applySliderPct(pct) {
 }
 
 function updateSliderFromEvent(e, root) {
-  const rect = root.getBoundingClientRect();
-  if (!rect.width) return;
-  const x = e.clientX - rect.left;
-  applySliderPct((x / rect.width) * 100);
+  const layer = root.querySelector('[data-zoom-layer]');
+  const layoutW = (layer && layer.offsetWidth) || root.clientWidth || 0;
+  if (!layoutW) return;
+
+  // Convert pointer to zoom-layer local X so the split tracks under the cursor when zoomed
+  let localX;
+  const z = zoomControllers.get('slider');
+  if (z && typeof z.screenToLocal === 'function' && z.getScale() > 1.001) {
+    localX = z.screenToLocal(e.clientX, e.clientY).x;
+  } else {
+    const rect = root.getBoundingClientRect();
+    localX = e.clientX - rect.left;
+  }
+  applySliderPct((localX / layoutW) * 100);
 }
 
 /**
@@ -747,6 +1099,12 @@ function wireSlider() {
   if (!root) return;
 
   const onPointerDown = (e) => {
+    // Only primary button moves the split
+    if (e.button !== 0) return;
+    // Space/Alt/middle-mouse pan when zoomed — don't steal that for the split
+    if (isZoomBlockingSliderDrag(e)) {
+      return;
+    }
     e.preventDefault();
     state.sliderDragging = true;
     try {
@@ -820,9 +1178,62 @@ function createVideoSyncController() {
   let playing = false;
   let raf = 0;
   let scrubbing = false;
+  let wasPlayingBeforeScrub = false;
+  /** @type {number|null} Latest scrub target (seconds), applied on rAF */
+  let pendingScrubTime = null;
+  let scrubFlushRaf = 0;
+  /** Display time while scrubbing (slider drives this) */
+  let scrubDisplayTime = 0;
 
   function list() {
     return videos.filter((v) => v && v.isConnected);
+  }
+
+  /**
+   * Videos that matter for the current mode (fewer seeks = smoother scrubbing).
+   * Full list is still updated when scrub ends so modes stay aligned.
+   */
+  function activeVideos() {
+    const all = list();
+    const byId = (id) => all.find((v) => v.id === id) || null;
+    if (state.mode === 'flick') {
+      return [byId('flick-vid-a'), byId('flick-vid-b'), byId('source-vid')].filter(Boolean);
+    }
+    if (state.mode === 'side') {
+      return [byId('side-vid-a'), byId('side-vid-b')].filter(Boolean);
+    }
+    if (state.mode === 'slider') {
+      return [byId('slider-vid-a'), byId('slider-vid-b')].filter(Boolean);
+    }
+    if (state.mode === 'refs') {
+      return [byId('refs-vid-a'), byId('refs-vid-b')].filter(Boolean);
+    }
+    return all;
+  }
+
+  function seekElement(v, t) {
+    if (!v) return;
+    const d = v.duration && isFinite(v.duration) ? v.duration : null;
+    let target = t;
+    if (d != null && d > 0) {
+      target = Math.min(Math.max(0, t), Math.max(0, d - 0.001));
+    } else {
+      target = Math.max(0, t);
+    }
+    // Skip tiny no-ops
+    if (Math.abs(v.currentTime - target) < 0.0005) return;
+    try {
+      // fastSeek is designed for scrubbing (keyframe-accurate, lower latency)
+      if (typeof v.fastSeek === 'function') {
+        v.fastSeek(target);
+      } else {
+        v.currentTime = target;
+      }
+    } catch (_) {
+      try {
+        v.currentTime = target;
+      } catch (_) {}
+    }
   }
 
   function maxDuration() {
@@ -867,16 +1278,18 @@ function createVideoSyncController() {
     const timeEl = $('transport-time');
     const playBtn = $('btn-play');
     const T = maxDuration();
-    const t = masterTime();
+    const t = scrubbing ? scrubDisplayTime : masterTime();
     if (scrub && T > 0 && !scrubbing) {
       scrub.max = String(SCRUB_STEPS);
       scrub.value = String(Math.round((t / T) * SCRUB_STEPS));
+    } else if (scrub && T > 0 && scrubbing) {
+      scrub.max = String(SCRUB_STEPS);
     }
     if (timeEl) {
       timeEl.textContent = formatTime(t) + ' / ' + formatTime(T);
     }
     if (playBtn) {
-      playBtn.textContent = playing ? 'Pause' : 'Play';
+      playBtn.textContent = playing && !scrubbing ? 'Pause' : 'Play';
     }
   }
 
@@ -922,21 +1335,24 @@ function createVideoSyncController() {
   }
 
   function tick() {
-    if (!playing || scrubbing) {
+    if (scrubbing) {
+      // Keep UI live while scrubbing without fighting seeks
+      updateTransportUi();
+      raf = window.requestAnimationFrame(tick);
+      return;
+    }
+    if (!playing) {
       updateTransportUi();
       return;
     }
     const vs = list();
-    const T = maxDuration();
 
     // Hold short clips at end
     vs.forEach((v) => {
       if (!v.duration || !isFinite(v.duration)) return;
       if (v.currentTime >= v.duration - 0.04 && !v.paused) {
         v.pause();
-        try {
-          v.currentTime = Math.max(0, v.duration - 0.01);
-        } catch (_) {}
+        seekElement(v, v.duration);
       }
     });
 
@@ -946,23 +1362,15 @@ function createVideoSyncController() {
       if (!v.duration || !isFinite(v.duration)) return;
       if (v.ended || v.currentTime >= v.duration - 0.05) return;
       if (v.paused && playing) {
-        // should still be playing if not finished
         v.play().catch(() => {});
       }
       if (Math.abs(v.currentTime - m) > 0.12 && m < v.duration - 0.05) {
-        try {
-          v.currentTime = Math.min(m, v.duration - 0.01);
-        } catch (_) {}
+        seekElement(v, m);
       }
     });
 
     if (allFinished()) {
-      // Restart all from 0 together
-      vs.forEach((v) => {
-        try {
-          v.currentTime = 0;
-        } catch (_) {}
-      });
+      vs.forEach((v) => seekElement(v, 0));
       vs.forEach((v) => {
         v.play().catch(() => {});
       });
@@ -977,6 +1385,88 @@ function createVideoSyncController() {
     raf = window.requestAnimationFrame(tick);
   }
 
+  function stopTick() {
+    if (raf) window.cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
+  /**
+   * Apply the latest scrub position once per animation frame.
+   * Coalesces rapid input events so the decoder is not flooded, while still
+   * updating frames continuously during the drag.
+   */
+  function flushScrubSeek() {
+    scrubFlushRaf = 0;
+    if (pendingScrubTime == null) {
+      if (scrubbing) {
+        // Keep polling while scrubbing in case a new value arrives
+        scrubFlushRaf = window.requestAnimationFrame(flushScrubSeek);
+      }
+      return;
+    }
+
+    const t = pendingScrubTime;
+    pendingScrubTime = null;
+    scrubDisplayTime = t;
+
+    const targets = activeVideos();
+    let busy = false;
+    targets.forEach((v) => {
+      if (v.seeking) {
+        busy = true;
+        return;
+      }
+      seekElement(v, t);
+      if (v.seeking) busy = true;
+    });
+
+    // If some decoders were busy, retry this time (or a newer pending) next frame
+    if (busy && pendingScrubTime == null) {
+      pendingScrubTime = t;
+    }
+
+    updateTransportUi();
+
+    if (scrubbing || pendingScrubTime != null) {
+      scrubFlushRaf = window.requestAnimationFrame(flushScrubSeek);
+    }
+  }
+
+  function queueScrubSeek(t) {
+    const T = maxDuration();
+    t = Math.max(0, Math.min(t, T || t));
+    pendingScrubTime = t;
+    scrubDisplayTime = t;
+
+    // Immediate seek on the currently visible A/B video for instant feedback
+    const side = state.flickSide === 'B' ? 'B' : 'A';
+    let primary = null;
+    if (state.mode === 'flick') {
+      primary = activeVideos().find((v) =>
+        side === 'A' ? v.id === 'flick-vid-a' : v.id === 'flick-vid-b'
+      );
+    } else if (state.mode === 'refs') {
+      primary = activeVideos().find((v) =>
+        side === 'A' ? v.id === 'refs-vid-a' : v.id === 'refs-vid-b'
+      );
+    } else {
+      primary = activeVideos()[0];
+    }
+    if (primary && !primary.seeking) {
+      seekElement(primary, t);
+    }
+
+    if (!scrubFlushRaf) {
+      scrubFlushRaf = window.requestAnimationFrame(flushScrubSeek);
+    }
+    updateTransportUi();
+  }
+
+  /** After scrub ends, snap every registered video to the same time. */
+  function syncAllTo(t) {
+    list().forEach((v) => seekElement(v, t));
+  }
+
   return {
     setVideos(arr) {
       videos = (arr || []).filter(Boolean);
@@ -984,6 +1474,10 @@ function createVideoSyncController() {
         v.loop = false;
         v.playsInline = true;
         v.preload = 'auto';
+        // Hint browsers we will scrub frequently
+        try {
+          v.disableRemotePlayback = true;
+        } catch (_) {}
       });
       applyMutePolicy();
       updateTransportUi();
@@ -992,22 +1486,37 @@ function createVideoSyncController() {
       updateTransportUi();
     },
     play() {
+      // Clear any stuck scrub so Play is never a no-op
+      scrubbing = false;
+      pendingScrubTime = null;
+      if (scrubFlushRaf) {
+        window.cancelAnimationFrame(scrubFlushRaf);
+        scrubFlushRaf = 0;
+      }
+
       playing = true;
       const vs = list();
-      // If all at end, restart from 0
-      if (allFinished()) {
-        vs.forEach((v) => {
-          try {
-            v.currentTime = 0;
-          } catch (_) {}
-        });
+      if (!vs.length) {
+        console.warn('[Flick and Slide] No videos registered to play');
+        updateTransportUi();
+        return;
       }
+
+      if (allFinished()) {
+        vs.forEach((v) => seekElement(v, 0));
+      }
+
       applyMutePolicy();
       vs.forEach((v) => {
         if (v.duration && isFinite(v.duration) && v.currentTime >= v.duration - 0.05) {
-          return; // hold until loop
+          seekElement(v, 0);
         }
-        v.play().catch(() => {});
+        const p = v.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch((err) => {
+            console.warn('[Flick and Slide] video.play() failed:', v.id, err && err.message);
+          });
+        }
       });
       startTick();
       updateTransportUi();
@@ -1015,41 +1524,71 @@ function createVideoSyncController() {
     pause() {
       playing = false;
       list().forEach((v) => v.pause());
-      if (raf) window.cancelAnimationFrame(raf);
-      raf = 0;
+      stopTick();
       updateTransportUi();
     },
     togglePlay() {
-      if (playing) this.pause();
+      if (playing && !scrubbing) this.pause();
       else this.play();
     },
     isPlaying() {
-      return playing;
+      return playing && !scrubbing;
     },
     seek(t) {
       const T = maxDuration();
       t = Math.max(0, Math.min(t, T || t));
+      scrubDisplayTime = t;
       list().forEach((v) => {
-        const d = v.duration && isFinite(v.duration) ? v.duration : t;
-        const target = Math.min(t, Math.max(0, d - 0.01));
-        try {
-          v.currentTime = target;
-        } catch (_) {}
-        if (playing) {
+        seekElement(v, t);
+        if (playing && !scrubbing) {
+          const d = v.duration && isFinite(v.duration) ? v.duration : t;
           if (t >= d - 0.05) v.pause();
           else v.play().catch(() => {});
         }
       });
       updateTransportUi();
     },
+    /**
+     * Continuous scrub from the range input (0..SCRUB_STEPS).
+     * Updates frames while dragging, not only on release.
+     */
+    scrubToNormalized(n) {
+      const T = maxDuration();
+      const t = (n / SCRUB_STEPS) * (T || 0);
+      queueScrubSeek(t);
+    },
     seekNormalized(n) {
-      // n 0..SCRUB_STEPS
       const T = maxDuration();
       this.seek((n / SCRUB_STEPS) * (T || 0));
     },
     setScrubbing(on) {
-      scrubbing = !!on;
-      if (!on && playing) startTick();
+      if (on && !scrubbing) {
+        wasPlayingBeforeScrub = playing;
+        scrubbing = true;
+        // Pause for frame-accurate scrubbing (play fights seeks)
+        list().forEach((v) => v.pause());
+        playing = false;
+        startTick(); // keep transport UI updating
+      } else if (!on && scrubbing) {
+        scrubbing = false;
+        if (scrubFlushRaf) {
+          window.cancelAnimationFrame(scrubFlushRaf);
+          scrubFlushRaf = 0;
+        }
+        // Final position: apply to all videos so modes stay aligned
+        const t =
+          pendingScrubTime != null ? pendingScrubTime : scrubDisplayTime;
+        pendingScrubTime = null;
+        syncAllTo(t);
+        scrubDisplayTime = t;
+        if (wasPlayingBeforeScrub) {
+          this.play();
+        } else {
+          updateTransportUi();
+          stopTick();
+        }
+        wasPlayingBeforeScrub = false;
+      }
     },
     applyMutePolicy,
     maxDuration,
@@ -1321,6 +1860,8 @@ function loadImages(comparison) {
   if (sideLb) sideLb.textContent = nounB();
 
   applySliderPct(50);
+  resetAllZooms();
+  updateZoomEnabled();
   let startMode = 'flick';
   if (
     preferredMode === 'refs' &&
@@ -1374,8 +1915,8 @@ function loadImages(comparison) {
 }
 
 function wireUi() {
-  $('btn-close').addEventListener('click', () => closeWindow());
-  $('btn-reset').addEventListener('click', () => closeWindow());
+  const btnReset = $('btn-reset');
+  if (btnReset) btnReset.addEventListener('click', () => closeWindow());
   $('btn-swap').addEventListener('click', () => swapFlick());
 
   const btnSource = $('btn-source');
@@ -1425,24 +1966,45 @@ function wireUi() {
   if (btnPlay) {
     btnPlay.addEventListener('click', (e) => {
       e.preventDefault();
-      window.__fasVideoSync.togglePlay();
+      e.stopPropagation();
+      if (window.__fasVideoSync) window.__fasVideoSync.togglePlay();
     });
   }
   const btnMute = $('btn-mute');
   if (btnMute) {
     btnMute.addEventListener('click', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       state.videoMutedAll = !state.videoMutedAll;
-      window.__fasVideoSync.applyMutePolicy();
+      if (window.__fasVideoSync) window.__fasVideoSync.applyMutePolicy();
     });
   }
   const scrub = $('scrub');
   if (scrub) {
-    scrub.addEventListener('pointerdown', () => window.__fasVideoSync.setScrubbing(true));
-    scrub.addEventListener('pointerup', () => window.__fasVideoSync.setScrubbing(false));
-    scrub.addEventListener('input', () => {
-      window.__fasVideoSync.seekNormalized(Number(scrub.value) || 0);
+    const endScrub = () => {
+      window.__fasVideoSync.setScrubbing(false);
+    };
+    scrub.addEventListener('pointerdown', (e) => {
+      try {
+        scrub.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      window.__fasVideoSync.setScrubbing(true);
+      window.__fasVideoSync.scrubToNormalized(Number(scrub.value) || 0);
     });
+    scrub.addEventListener('pointerup', endScrub);
+    scrub.addEventListener('pointercancel', endScrub);
+    scrub.addEventListener('pointermove', (e) => {
+      // Some browsers only fire input; keep move as backup while captured
+      if (e.buttons === 1) {
+        window.__fasVideoSync.scrubToNormalized(Number(scrub.value) || 0);
+      }
+    });
+    // Primary continuous update path while dragging
+    scrub.addEventListener('input', () => {
+      window.__fasVideoSync.setScrubbing(true);
+      window.__fasVideoSync.scrubToNormalized(Number(scrub.value) || 0);
+    });
+    scrub.addEventListener('change', endScrub);
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -1473,6 +2035,32 @@ function wireUi() {
   }
 
   wireSlider();
+  initZoomControllers();
+
+  // Space = pan modifier while zoomed on the comparison slider
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !e.repeat) {
+      const tag = e.target && e.target.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'BUTTON') {
+        zoomSpaceHeld = true;
+        document.body.classList.add('fas-zoom-space-held');
+        // Don't scroll the page / toggle play when using Space to pan on image slider
+        if (state.mediaKind !== 'video' && state.mode === 'slider') {
+          e.preventDefault();
+        }
+      }
+    }
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+      zoomSpaceHeld = false;
+      document.body.classList.remove('fas-zoom-space-held');
+    }
+  });
+  window.addEventListener('blur', () => {
+    zoomSpaceHeld = false;
+    document.body.classList.remove('fas-zoom-space-held');
+  });
 
   document.addEventListener('keydown', (e) => {
     // F11 → full screen (same as the Full Screen button)

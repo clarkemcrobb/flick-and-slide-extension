@@ -9,17 +9,6 @@
   <body>
     <div id="app" class="fas-app is-fit-fill" role="application" aria-label="Flick and Slide comparison">
       <header class="fas-panel__header" id="header">
-        <div class="fas-panel__header-left">
-          <button
-            type="button"
-            class="fas-btn fas-btn--close"
-            id="btn-close"
-            title="Close comparison tool"
-            aria-label="Close comparison tool"
-          >
-            ×
-          </button>
-        </div>
         <div class="fas-panel__title-block">
           <div class="fas-panel__title" id="panel-title">Flick Between Images – A vs B</div>
           <div class="fas-panel__hint" id="slider-hint" hidden>
@@ -83,6 +72,14 @@
               Compare to Reference Images
             </button>
           </div>
+          <button
+            type="button"
+            class="fas-btn fas-btn--ghost"
+            id="btn-reset"
+            title="Close comparison tool"
+          >
+            Close tool
+          </button>
         </div>
       </header>
 
@@ -90,53 +87,57 @@
         <div class="fas-mode-pane is-visible" data-pane="flick" id="pane-flick">
           <div class="fas-flick" id="flick-root">
             <div class="fas-flick__source" id="flick-source" hidden>
-              <div class="fas-flick__stage fas-flick__stage--source">
+              <div class="fas-flick__stage fas-flick__stage--source fas-zoom-viewport" data-zoom-id="source">
                 <div class="fas-ar-badge" id="source-ar" aria-hidden="true"></div>
-                <img
-                  class="fas-flick__img fas-fit-img fas-media-img"
-                  id="source-img"
-                  alt="Source"
-                  draggable="false"
-                  title="Click to toggle fill the frame and original size"
-                />
-                <video
-                  class="fas-flick__img fas-fit-img fas-media-video"
-                  id="source-vid"
-                  playsinline
-                  preload="auto"
-                  title="Click to toggle fill the frame and original size"
-                  hidden
-                ></video>
+                <div class="fas-zoom-layer" data-zoom-layer>
+                  <img
+                    class="fas-flick__img fas-fit-img fas-media-img"
+                    id="source-img"
+                    alt="Source"
+                    draggable="false"
+                    title="Scroll to zoom · drag to pan · click to toggle fill/original · double-click reset zoom"
+                  />
+                  <video
+                    class="fas-flick__img fas-fit-img fas-media-video"
+                    id="source-vid"
+                    playsinline
+                    preload="auto"
+                    title="Click to toggle fill the frame and original size"
+                    hidden
+                  ></video>
+                </div>
               </div>
               <div class="fas-flick__label fas-flick__label--source" id="source-label">Source image</div>
             </div>
 
             <div class="fas-flick__main" id="flick-main">
-              <div class="fas-flick__stage" id="flick-stage">
+              <div class="fas-flick__stage fas-zoom-viewport" id="flick-stage" data-zoom-id="flick">
                 <div class="fas-ar-badge fas-ar-badge--stack" id="flick-ar" aria-hidden="true"></div>
-                <img
-                  class="fas-flick__img fas-fit-img fas-media-img"
-                  id="flick-img"
-                  alt="Image A"
-                  draggable="false"
-                  title="Click to toggle fill the frame and original size"
-                />
-                <video
-                  class="fas-flick__img fas-fit-img fas-media-video"
-                  id="flick-vid-a"
-                  playsinline
-                  preload="auto"
-                  title="Click to toggle fill the frame and original size"
-                  hidden
-                ></video>
-                <video
-                  class="fas-flick__img fas-fit-img fas-media-video"
-                  id="flick-vid-b"
-                  playsinline
-                  preload="auto"
-                  title="Click to toggle fill the frame and original size"
-                  hidden
-                ></video>
+                <div class="fas-zoom-layer" data-zoom-layer>
+                  <img
+                    class="fas-flick__img fas-fit-img fas-media-img"
+                    id="flick-img"
+                    alt="Image A"
+                    draggable="false"
+                    title="Scroll to zoom · drag to pan · click to toggle fill/original · double-click reset zoom"
+                  />
+                  <video
+                    class="fas-flick__img fas-fit-img fas-media-video"
+                    id="flick-vid-a"
+                    playsinline
+                    preload="auto"
+                    title="Click to toggle fill the frame and original size"
+                    hidden
+                  ></video>
+                  <video
+                    class="fas-flick__img fas-fit-img fas-media-video"
+                    id="flick-vid-b"
+                    playsinline
+                    preload="auto"
+                    title="Click to toggle fill the frame and original size"
+                    hidden
+                  ></video>
+                </div>
               </div>
               <div class="fas-flick__controls">
                 <div class="fas-flick__label" id="flick-label" data-side="A">Image A</div>
@@ -163,26 +164,32 @@
             hidden
             role="status"
           ></div>
-          <div
-            class="fas-slider"
-            id="slider"
-            role="slider"
-            aria-label="Comparison slider"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow="50"
-            tabindex="0"
-          >
-            <div class="fas-slider__layer fas-slider__layer--b">
-              <img id="slider-img-b" class="fas-media-img" alt="Image B" draggable="false" />
-              <video id="slider-vid-b" class="fas-media-video" playsinline preload="auto" hidden></video>
-            </div>
-            <div class="fas-slider__layer fas-slider__layer--a">
-              <img id="slider-img-a" class="fas-media-img" alt="Image A" draggable="false" />
-              <video id="slider-vid-a" class="fas-media-video" playsinline preload="auto" hidden></video>
-            </div>
-            <div class="fas-slider__handle" id="slider-handle" aria-hidden="true">
-              <div class="fas-slider__line"></div>
+          <div class="fas-slider-shell" id="slider-chrome-host">
+            <div
+              class="fas-slider fas-zoom-viewport"
+              id="slider"
+              data-zoom-id="slider"
+              role="slider"
+              aria-label="Comparison slider"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="50"
+              tabindex="0"
+            >
+              <div class="fas-zoom-layer" data-zoom-layer>
+                <div class="fas-slider__layer fas-slider__layer--b">
+                  <img id="slider-img-b" class="fas-media-img" alt="Image B" draggable="false" />
+                  <video id="slider-vid-b" class="fas-media-video" playsinline preload="auto" hidden></video>
+                </div>
+                <div class="fas-slider__layer fas-slider__layer--a">
+                  <img id="slider-img-a" class="fas-media-img" alt="Image A" draggable="false" />
+                  <video id="slider-vid-a" class="fas-media-video" playsinline preload="auto" hidden></video>
+                </div>
+                <!-- Handle lives inside the zoom layer so the split stays aligned when zoomed -->
+                <div class="fas-slider__handle" id="slider-handle" aria-hidden="true">
+                  <div class="fas-slider__line"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -190,45 +197,49 @@
         <div class="fas-mode-pane" data-pane="side" id="pane-side">
           <div class="fas-side">
             <div class="fas-side__panel fas-side__panel--a">
-              <div class="fas-side__stage">
+              <div class="fas-side__stage fas-zoom-viewport" data-zoom-id="side-a">
                 <div class="fas-ar-badge" id="side-ar-a" aria-hidden="true"></div>
-                <img
-                  class="fas-fit-img fas-media-img"
-                  id="side-img-a"
-                  alt="Image A"
-                  draggable="false"
-                  title="Click to toggle fill the frame and original size"
-                />
-                <video
-                  class="fas-fit-img fas-media-video"
-                  id="side-vid-a"
-                  playsinline
-                  preload="auto"
-                  title="Click to toggle fill the frame and original size"
-                  hidden
-                ></video>
+                <div class="fas-zoom-layer" data-zoom-layer>
+                  <img
+                    class="fas-fit-img fas-media-img"
+                    id="side-img-a"
+                    alt="Image A"
+                    draggable="false"
+                    title="Scroll to zoom · drag to pan · click to toggle fill/original · double-click reset zoom"
+                  />
+                  <video
+                    class="fas-fit-img fas-media-video"
+                    id="side-vid-a"
+                    playsinline
+                    preload="auto"
+                    title="Click to toggle fill the frame and original size"
+                    hidden
+                  ></video>
+                </div>
               </div>
               <div class="fas-side__label fas-side__label--a" id="side-label-a">Image A</div>
             </div>
             <div class="fas-side__divider" aria-hidden="true"></div>
             <div class="fas-side__panel fas-side__panel--b">
-              <div class="fas-side__stage">
+              <div class="fas-side__stage fas-zoom-viewport" data-zoom-id="side-b">
                 <div class="fas-ar-badge" id="side-ar-b" aria-hidden="true"></div>
-                <img
-                  class="fas-fit-img fas-media-img"
-                  id="side-img-b"
-                  alt="Image B"
-                  draggable="false"
-                  title="Click to toggle fill the frame and original size"
-                />
-                <video
-                  class="fas-fit-img fas-media-video"
-                  id="side-vid-b"
-                  playsinline
-                  preload="auto"
-                  title="Click to toggle fill the frame and original size"
-                  hidden
-                ></video>
+                <div class="fas-zoom-layer" data-zoom-layer>
+                  <img
+                    class="fas-fit-img fas-media-img"
+                    id="side-img-b"
+                    alt="Image B"
+                    draggable="false"
+                    title="Scroll to zoom · drag to pan · click to toggle fill/original · double-click reset zoom"
+                  />
+                  <video
+                    class="fas-fit-img fas-media-video"
+                    id="side-vid-b"
+                    playsinline
+                    preload="auto"
+                    title="Click to toggle fill the frame and original size"
+                    hidden
+                  ></video>
+                </div>
               </div>
               <div class="fas-side__label fas-side__label--b" id="side-label-b">Image B</div>
             </div>
@@ -244,15 +255,17 @@
           </p>
           <div class="fas-refs" id="refs-root">
             <div class="fas-refs__panel fas-refs__panel--left">
-              <div class="fas-refs__stage">
+              <div class="fas-refs__stage fas-zoom-viewport" data-zoom-id="refs-img">
                 <div class="fas-ar-badge" id="refs-ar" aria-hidden="true"></div>
-                <img
-                  class="fas-fit-img"
-                  id="refs-img"
-                  alt="Reference image"
-                  draggable="false"
-                  title="Click to toggle fill the frame and original size"
-                />
+                <div class="fas-zoom-layer" data-zoom-layer>
+                  <img
+                    class="fas-fit-img"
+                    id="refs-img"
+                    alt="Reference image"
+                    draggable="false"
+                    title="Scroll to zoom · drag to pan · double-click reset zoom"
+                  />
+                </div>
               </div>
               <div class="fas-refs__label" id="refs-label">Reference 1</div>
               <div class="fas-refs__controls">
@@ -300,6 +313,36 @@
         </div>
 
         <div class="fas-status" id="status" hidden>Loading…</div>
+
+        <!-- Sits on the video frame (bottom of main stage), not a window footer -->
+        <div class="fas-video-chrome" id="video-chrome" hidden>
+          <div class="fas-transport" id="transport">
+            <button type="button" class="fas-btn fas-transport__play" id="btn-play" title="Play / Pause">
+              Play
+            </button>
+            <button type="button" class="fas-btn fas-transport__mute" id="btn-mute" title="Mute all">
+              Mute
+            </button>
+            <input
+              type="range"
+              class="fas-transport__scrub"
+              id="scrub"
+              min="0"
+              max="100000"
+              value="0"
+              step="1"
+              aria-label="Seek"
+            />
+            <span class="fas-transport__time" id="transport-time">0:00.000 / 0:00.000</span>
+          </div>
+          <div class="fas-fit-hint" id="fit-hint-video">
+            Showing the image filling the frame - click an image to return to original size
+          </div>
+        </div>
+
+        <div class="fas-fit-hint fas-fit-hint--standalone" id="fit-hint">
+          Showing the image filling the frame - click an image to return to original size
+        </div>
       </main>
 
       <div
@@ -320,36 +363,6 @@
           </button>
         </div>
       </div>
-
-      <footer class="fas-panel__footer">
-        <div class="fas-panel__footer-left">
-          <div class="fas-transport" id="transport" hidden>
-            <button type="button" class="fas-btn fas-transport__play" id="btn-play" title="Play / Pause">
-              Play
-            </button>
-            <button type="button" class="fas-btn fas-transport__mute" id="btn-mute" title="Mute all">
-              Mute
-            </button>
-            <input
-              type="range"
-              class="fas-transport__scrub"
-              id="scrub"
-              min="0"
-              max="100000"
-              value="0"
-              step="1"
-              aria-label="Seek"
-            />
-            <span class="fas-transport__time" id="transport-time">0:00.000 / 0:00.000</span>
-          </div>
-          <div class="fas-panel__footer-hint" id="fit-hint">
-            Showing the image filling the frame - click an image to return to original size
-          </div>
-        </div>
-        <button type="button" class="fas-btn fas-btn--ghost" id="btn-reset">
-          Close tool
-        </button>
-      </footer>
     </div>
     <script src="comparison.js"></script>
   </body>

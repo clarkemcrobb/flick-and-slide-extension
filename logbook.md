@@ -1,5 +1,13 @@
 # Logbook
 
+## v3.2.0 – Image zoom, video UI polish (2026-07-13)
+
+- Image zoom/pan in Flick, Side by Side, and Comparison Slider (scroll to zoom, drag to pan; on slider: drag moves split, Space/Alt-drag pans)
+- Millisecond scrubbing improved for continuous frame preview
+- Video transport overlaid on the active video frame; Close tool in the header (× removed)
+- Play controls isolated so playback works in all video modes including Slider
+- Slider split stays aligned under zoom; inverse-transform pointer mapping
+
 ## v3.1.0 – Reference images & video polish (2026-07-11)
 
 - **Compare to Reference Images** (video sessions): select up to 10 stills from the page; dual flick layout (references left, videos A/B right)

@@ -21,6 +21,7 @@ Built with Manifest V3 and plain JavaScript/CSS — no frameworks.
 - **Compare to reference images** (video) — pick up to 10 stills from the page; flick references on the left and videos A/B on the right (← / →)
 - **Video transport** — play/pause, mute, scrubber, and millisecond timestamps
 - **Fill or original size** — media fills the frame by default; click to toggle native size
+- **Image zoom** — scroll to zoom toward the cursor, drag to pan, double-click to reset (works in Flick, Side by Side, and Comparison Slider)
 - **Aspect ratio labels** — common ratios shown as badges (media is never stretched)
 - **Check for updates** — right-click the toolbar icon (for unpacked installs)
 
@@ -67,7 +68,7 @@ Unpacked extensions are not updated automatically by Chrome.
 |-----|--------|
 | **C** | Open comparison when A and B are selected |
 | **←** / **→** | Switch between A and B in Flick mode |
-| **Space** | Play or pause (video sessions) |
+| **Space** | Play or pause (video sessions); hold and drag to pan when zoomed on the image slider |
 | **Esc** | Close the comparison window or leave selection mode |
 | **F11** | Full screen the comparison window |
 
@@ -102,4 +103,4 @@ Unpacked extensions are not updated automatically by Chrome.
 
 Issues and pull requests are welcome on [GitHub](https://github.com/clarkemcrobb/flick-and-slide-extension).
 
-**Current version:** 3.1.0 — see `logbook.md` for release notes.
+**Current version:** 3.2.0 — see `logbook.md` for release notes.

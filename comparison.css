@@ -66,15 +66,11 @@ body {
   min-height: 52px;
 }
 
-.fas-panel__header-left,
 .fas-panel__header-right {
   display: flex;
   align-items: center;
   gap: var(--fas-space-2);
   flex-shrink: 0;
-}
-
-.fas-panel__header-right {
   margin-left: auto;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -85,11 +81,11 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 2px;
   padding: 0 var(--fas-space-2);
-  text-align: center;
+  text-align: left;
 }
 
 .fas-panel__title {
@@ -126,29 +122,7 @@ body {
   position: relative;
 }
 
-.fas-panel__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fas-space-3);
-  padding: var(--fas-space-2) var(--fas-space-4);
-  background: var(--fas-surface);
-  border-top: 1px solid var(--fas-border);
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--fas-text-muted);
-}
-
-.fas-panel__footer-left {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.fas-panel__footer-hint {
+.fas-fit-hint {
   font-size: 11px;
   font-weight: 500;
   color: var(--fas-text-muted);
@@ -156,8 +130,19 @@ body {
   max-width: 100%;
 }
 
-.fas-panel__footer-hint[hidden] {
+.fas-fit-hint[hidden] {
   display: none !important;
+}
+
+.fas-fit-hint--standalone {
+  flex-shrink: 0;
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* Header close-tool sits with mode controls */
+.fas-panel__header-right .fas-btn--ghost {
+  margin-left: 4px;
 }
 
 /* Buttons */
@@ -540,18 +525,50 @@ body {
   pointer-events: none;
 }
 
-/* Video transport bar */
+/*
+ * Video chrome is moved into the active stage via JS and sits on the
+ * bottom edge of that video frame (not the window).
+ */
+.fas-flick__stage,
+.fas-side,
+.fas-slider,
+.fas-refs__panel--right .fas-refs__stage {
+  position: relative;
+}
+
+.fas-video-chrome {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(13, 17, 23, 0.9);
+  border: 1px solid rgba(48, 54, 61, 0.95);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.fas-video-chrome[hidden] {
+  display: none !important;
+}
+
+.fas-video-chrome .fas-fit-hint {
+  text-align: center;
+  color: rgba(230, 237, 243, 0.75);
+}
+
 .fas-transport {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 4px;
   width: 100%;
-}
-
-.fas-transport[hidden] {
-  display: none !important;
 }
 
 .fas-transport__scrub {
@@ -568,10 +585,6 @@ body {
   white-space: nowrap;
   min-width: 11.5em;
   text-align: right;
-}
-
-.fas-app.is-video-session .fas-panel__footer-hint {
-  /* still useful for fill/original on video frames */
 }
 
 .fas-flick__img.is-fading {
@@ -831,6 +844,16 @@ body {
 }
 
 /* Slider */
+/* Shell holds the slider + overlaid transport (outside slider hit-testing) */
+.fas-slider-shell {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .fas-slider {
   position: relative;
   flex: 1 1 auto;
@@ -843,6 +866,61 @@ body {
   touch-action: none;
   user-select: none;
   cursor: ew-resize;
+}
+
+/* Zoom: viewport clips; layer transforms under the pointer */
+.fas-zoom-viewport {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.fas-zoom-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* Slider: zoom layer fills the frame; handle stays outside the transform */
+.fas-slider > .fas-zoom-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.fas-zoom-viewport.is-zoomed {
+  cursor: grab;
+}
+
+.fas-zoom-viewport.is-zoomed.is-panning {
+  cursor: grabbing;
+}
+
+.fas-zoom-hint {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(230, 237, 243, 0.9);
+  background: rgba(13, 17, 23, 0.8);
+  padding: 4px 10px;
+  border-radius: 999px;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.fas-zoom-space-held .fas-slider.is-zoomed {
+  cursor: grab;
 }
 
 .fas-slider__layer {
@@ -880,10 +958,16 @@ body {
   top: 0;
   bottom: 0;
   left: var(--fas-exposure);
-  width: 0;
-  z-index: 3;
+  width: 28px;
+  z-index: 50;
   transform: translateX(-50%);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: ew-resize;
+  /* Keep handle in the same space as clip-path (inside zoom layer) */
+}
+
+.fas-slider.is-zoomed .fas-slider__handle {
+  width: 36px;
 }
 
 .fas-slider__line {
@@ -895,6 +979,21 @@ body {
   transform: translateX(-50%);
   background: #fff;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+/* Visible grip so the split is easy to grab while zoomed */
+.fas-slider__handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 
